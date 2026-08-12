@@ -69,7 +69,7 @@ try
             using (var client = new HttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, verifyOptions);
-                var report = await intervalsClient.VerifyEventsAsync(verifyEvents, CancellationToken.None);
+                var report = await intervalsClient.VerifyEventsAsync(verifyEvents, verifyOptions.UseApplyPlan, CancellationToken.None);
 
                 if (verifyOptions.JsonOutput)
                 {
@@ -151,6 +151,7 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
     var structuredOnly = options.ContainsKey("structured-only");
     var useApplyPlan = options.ContainsKey("apply-plan");
     var createPlanOnMissing = options.ContainsKey("create-plan-on-missing");
+    var cleanupPlanBeforeApply = options.ContainsKey("cleanup-plan-before-apply");
     var planName = GetOption(options, "plan-name") ?? "Running Plan Auto";
     var noVerify = options.ContainsKey("no-verify");
     var jsonOutput = options.ContainsKey("json");
@@ -183,6 +184,7 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         FolderId = folderId,
         CreatePlanOnMissing = createPlanOnMissing,
         PlanName = planName,
+        CleanupPlanBeforeApply = cleanupPlanBeforeApply,
         VerifyAfterSync = !noVerify,
         JsonOutput = jsonOutput
     };
@@ -222,7 +224,7 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--no-verify] [--json]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply] [--no-verify] [--json]");
     Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");

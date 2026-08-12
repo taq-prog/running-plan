@@ -52,7 +52,7 @@ public sealed class IntervalsClient
 
         if (!_options.DryRun && _options.VerifyAfterSync)
         {
-            verificationReport = await VerifyWithRetriesAsync(events, cancellationToken);
+            verificationReport = await VerifyWithRetriesAsync(events, usedApplyPlan, cancellationToken);
             if (!verificationReport.Success)
             {
                 throw new VerificationFailedException(verificationReport);
@@ -141,6 +141,9 @@ public sealed class IntervalsClient
     }
 
     public async Task<VerificationReport> VerifyEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+        => await VerifyEventsAsync(events, _options.UseApplyPlan, cancellationToken);
+
+    public async Task<VerificationReport> VerifyEventsAsync(IReadOnlyCollection<IntervalsEvent> events, bool useApplyPlanVerification, CancellationToken cancellationToken)
     {
         if (events.Count == 0)
         {
@@ -181,12 +184,52 @@ public sealed class IntervalsClient
 
         var expectedDateByExternalId = events.ToDictionary(x => x.ExternalId, x => x.Date, StringComparer.OrdinalIgnoreCase);
         var externalIdByUid = events.ToDictionary(x => x.Uid, x => x.ExternalId, StringComparer.OrdinalIgnoreCase);
+        var expectedSignatureByExternalId = events.ToDictionary(x => x.ExternalId, x => BuildEventSignature(x.Date, x.Name), StringComparer.OrdinalIgnoreCase);
         var expectedIds = new HashSet<string>(expectedDateByExternalId.Keys, StringComparer.OrdinalIgnoreCase);
         var foundIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var dateMismatches = new List<string>();
+        var foundSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in document.RootElement.EnumerateArray())
         {
+            if (useApplyPlanVerification)
+            {
+                if (!string.IsNullOrWhiteSpace(_options.PlanName)
+                    && item.TryGetProperty("plan_name", out var planNameElement)
+                    && planNameElement.ValueKind == JsonValueKind.String)
+                {
+                    var planName = planNameElement.GetString();
+                    if (!string.Equals(planName, _options.PlanName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+
+                if (!item.TryGetProperty("start_date_local", out var startElement) || startElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                if (!TryParseEventDate(startElement.GetString(), out var actualDate))
+                {
+                    continue;
+                }
+
+                if (!item.TryGetProperty("name", out var nameElement) || nameElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var actualName = nameElement.GetString();
+                if (string.IsNullOrWhiteSpace(actualName))
+                {
+                    continue;
+                }
+
+                foundSignatures.Add(BuildEventSignature(actualDate, actualName));
+                continue;
+            }
+
             string? matchedExternalId = null;
 
             if (item.TryGetProperty("external_id", out var externalIdElement) && externalIdElement.ValueKind == JsonValueKind.String)
@@ -218,23 +261,38 @@ public sealed class IntervalsClient
                 continue;
             }
 
-            if (TryParseEventDate(dateElement.GetString(), out var actualDate) && expectedDateByExternalId.TryGetValue(matchedExternalId, out var expectedDate))
+            if (TryParseEventDate(dateElement.GetString(), out var parsedDate) && expectedDateByExternalId.TryGetValue(matchedExternalId, out var expectedDate))
             {
-                if (actualDate != expectedDate)
+                if (parsedDate != expectedDate)
                 {
-                    dateMismatches.Add($"{matchedExternalId}: expected {expectedDate:yyyy-MM-dd}, got {actualDate:yyyy-MM-dd}");
+                    dateMismatches.Add($"{matchedExternalId}: expected {expectedDate:yyyy-MM-dd}, got {parsedDate:yyyy-MM-dd}");
                 }
             }
         }
 
-        var missing = expectedIds.Where(x => !foundIds.Contains(x)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        List<string> missing;
+        var foundCount = foundIds.Count;
+
+        if (useApplyPlanVerification)
+        {
+            missing = expectedSignatureByExternalId
+                .Where(pair => !foundSignatures.Contains(pair.Value))
+                .Select(pair => pair.Key)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            foundCount = expectedIds.Count - missing.Count;
+        }
+        else
+        {
+            missing = expectedIds.Where(x => !foundIds.Contains(x)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        }
 
         var report = new VerificationReport
         {
             OldestDate = minDate,
             NewestDate = maxDate,
             ExpectedCount = expectedIds.Count,
-            FoundCount = foundIds.Count,
+            FoundCount = foundCount,
             MissingExternalIds = missing,
             DateMismatches = dateMismatches
         };
@@ -280,7 +338,7 @@ public sealed class IntervalsClient
         return report;
     }
 
-    private async Task<VerificationReport> VerifyWithRetriesAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    private async Task<VerificationReport> VerifyWithRetriesAsync(IReadOnlyCollection<IntervalsEvent> events, bool useApplyPlanVerification, CancellationToken cancellationToken)
     {
         const int maxAttempts = 4;
         const int delayMs = 1500;
@@ -288,7 +346,7 @@ public sealed class IntervalsClient
         VerificationReport? lastReport = null;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            lastReport = await VerifyEventsAsync(events, cancellationToken);
+            lastReport = await VerifyEventsAsync(events, useApplyPlanVerification, cancellationToken);
             if (lastReport.Success)
             {
                 return lastReport;
@@ -325,6 +383,7 @@ public sealed class IntervalsClient
 
         var ordered = events.OrderBy(x => x.Date).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
         var startDate = ordered[0].Date;
+        var endDate = ordered[^1].Date;
 
         var extraWorkouts = ordered.Select(evt =>
         {
@@ -377,6 +436,15 @@ public sealed class IntervalsClient
             }
 
             return true;
+        }
+
+        if (_options.CleanupPlanBeforeApply)
+        {
+            var removed = await CleanupExistingPlanEventsAsync(startDate, endDate, cancellationToken);
+            if (!_options.JsonOutput)
+            {
+                Console.WriteLine($"[CLEANUP] Removed {removed} existing events for plan '{_options.PlanName}' before apply-plan.");
+            }
         }
 
         var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/apply-plan";
@@ -468,6 +536,69 @@ public sealed class IntervalsClient
         return id;
     }
 
+    private async Task<int> CleanupExistingPlanEventsAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
+    {
+        var listEndpoint =
+            $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
+            $"?oldest={oldestDate:yyyy-MM-dd}" +
+            $"&newest={newestDate:yyyy-MM-dd}" +
+            "&limit=1000";
+
+        using var listResponse = await _httpClient.GetAsync(listEndpoint, cancellationToken);
+        var listBody = await listResponse.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!listResponse.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Cleanup preflight failed ({(int)listResponse.StatusCode} {listResponse.StatusCode}): {listBody}");
+        }
+
+        using var document = JsonDocument.Parse(listBody);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Cleanup preflight response is not an array of events.");
+        }
+
+        var eventIdsToDelete = new List<long>();
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            if (!item.TryGetProperty("plan_name", out var planNameElement) || planNameElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var planName = planNameElement.GetString();
+            if (!string.Equals(planName, _options.PlanName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (item.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number && idElement.TryGetInt64(out var eventId))
+            {
+                eventIdsToDelete.Add(eventId);
+            }
+        }
+
+        var deleted = 0;
+        foreach (var eventId in eventIdsToDelete.Distinct())
+        {
+            var deleteEndpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/{eventId}";
+            using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, deleteEndpoint);
+            using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+            var deleteBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!deleteResponse.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"Cleanup delete failed for event {eventId} ({(int)deleteResponse.StatusCode} {deleteResponse.StatusCode}): {deleteBody}");
+            }
+
+            deleted++;
+        }
+
+        return deleted;
+    }
+
     private static string FormatEventStartDate(DateOnly date)
         => $"{date:yyyy-MM-dd}T00:00:00";
 
@@ -487,4 +618,7 @@ public sealed class IntervalsClient
         date = default;
         return false;
     }
+
+    private static string BuildEventSignature(DateOnly date, string name)
+        => $"{date:yyyy-MM-dd}|{name.Trim()}";
 }

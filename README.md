@@ -18,6 +18,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
   - `sync --plan-name` to control the auto-created plan name
+  - `sync --cleanup-plan-before-apply` to delete existing events with the same `plan_name` in the plan date range before apply-plan
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
   - `verify --json` to emit machine-readable verification output for CI/automation
@@ -88,6 +89,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --apply-plan \
   --folder-id 0 \
   --create-plan-on-missing \
+  --cleanup-plan-before-apply \
   --plan-name "My 12-week running plan"
 
 dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
@@ -137,6 +139,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --apply-plan \
   --folder-id 0 \
   --create-plan-on-missing \
+  --cleanup-plan-before-apply \
   --plan-name "My 12-week running plan" \
   --json
 ```
@@ -145,7 +148,10 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 
 - The CLI posts to `POST /api/v1/athlete/{id}/events?upsertOnUid=true`.
 - With `--apply-plan`, the CLI posts to `POST /api/v1/athlete/{id}/events/apply-plan` using one request containing `extra_workouts`.
-- After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range and checks `external_id` + `start_date_local`.
+- After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range.
+- Verification mode depends on sync mode:
+  - per-event sync: checks `external_id` (+ date consistency)
+  - apply-plan sync: checks by `date + name` (and `plan_name` when provided), because some accounts return `external_id = null` for apply-plan-created events
 - If verification finds missing or mismatched workouts, sync exits with an error and prints a compact mismatch report.
 - Events are created as `category=WORKOUT` and `type=Run`.
 - For structured sessions, step details are included in both `description` and `workout_doc`.
