@@ -1,0 +1,106 @@
+using System.ComponentModel.DataAnnotations;
+using YamlDotNet.Serialization;
+
+namespace RunningPlan.Cli.Domain;
+
+public sealed class TrainingPlan
+{
+    [Required]
+    public PlanMeta Meta { get; init; } = new();
+
+    [Required]
+    [MinLength(1)]
+    public List<TrainingWeek> Weeks { get; init; } = [];
+}
+
+public sealed class PlanMeta
+{
+    [Required]
+    [MinLength(3)]
+    public string Name { get; init; } = string.Empty;
+
+    [Required]
+    [YamlMember(Alias = "start_date")]
+    public DateOnly StartDate { get; init; }
+
+    [Required]
+    [YamlMember(Alias = "timezone")]
+    public string TimeZone { get; init; } = "Europe/Moscow";
+
+    [YamlMember(Alias = "default_targets")]
+    public DefaultTargets DefaultTargets { get; init; } = new();
+}
+
+public sealed class DefaultTargets
+{
+    public HeartRateRange EasyHr { get; init; } = new() { Min = 120, Max = 135 };
+    public HeartRateRange SteadyHr { get; init; } = new() { Min = 135, Max = 150 };
+    public HeartRateRange TempoHr { get; init; } = new() { Min = 150, Max = 165 };
+}
+
+public sealed class TrainingWeek
+{
+    [Range(1, 53)]
+    public int Number { get; init; }
+
+    [Required]
+    [MinLength(1)]
+    public List<PlannedWorkout> Workouts { get; init; } = [];
+}
+
+public sealed class PlannedWorkout
+{
+    [Required]
+    [RegularExpression("^[a-z0-9_-]+$")]
+    public string Id { get; init; } = string.Empty;
+
+    [Required]
+    [MinLength(3)]
+    public string Name { get; init; } = string.Empty;
+
+    [Required]
+    public WeekDay Day { get; init; }
+
+    [Required]
+    public string Type { get; init; } = "Run";
+
+    [Required]
+    public string Category { get; init; } = "WORKOUT";
+
+    public int? DistanceKm { get; init; }
+
+    public int? DurationMin { get; init; }
+
+    public HeartRateRange? TargetHr { get; init; }
+
+    public List<WorkoutStep> Steps { get; init; } = [];
+
+    public List<string> Tags { get; init; } = [];
+}
+
+public sealed class WorkoutStep
+{
+    [Required]
+    public string Kind { get; init; } = string.Empty;
+
+    public int? DistanceKm { get; init; }
+
+    public int? DurationMin { get; init; }
+
+    public int? Repeats { get; init; }
+
+    public HeartRateRange? TargetHr { get; init; }
+
+    public List<WorkoutStep> Steps { get; init; } = [];
+
+    public string? Note { get; init; }
+}
+
+public sealed class HeartRateRange
+{
+    [Range(50, 230)]
+    public int Min { get; init; }
+
+    [Range(50, 230)]
+    public int Max { get; init; }
+}

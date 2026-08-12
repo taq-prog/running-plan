@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RunningPlan.Cli/RunningPlan.Cli.csproj" />
+  </Folder>
+</Solution>

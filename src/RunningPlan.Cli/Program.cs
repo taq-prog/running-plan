@@ -1,0 +1,134 @@
+﻿using RunningPlan.Cli.Config;
+using RunningPlan.Cli.Intervals;
+
+if (args.Length < 2)
+{
+    PrintUsage();
+    return 1;
+}
+
+var command = args[0].Trim().ToLowerInvariant();
+var planPath = args[1].Trim();
+
+try
+{
+    var plan = PlanLoader.Load(planPath);
+
+    switch (command)
+    {
+        case "validate":
+            Console.WriteLine($"OK: plan is valid ({plan.Weeks.Count} weeks).\nPath: {Path.GetFullPath(planPath)}");
+            return 0;
+
+        case "sync":
+            var mappedEvents = PlanToIntervalsMapper.Map(plan);
+            var syncOptions = ParseSyncOptions(args);
+            PrintPreview(mappedEvents);
+
+            using (var client = new HttpClient())
+            {
+                var intervalsClient = new IntervalsClient(client, syncOptions);
+                await intervalsClient.UpsertEventsAsync(mappedEvents, CancellationToken.None);
+            }
+
+            Console.WriteLine(syncOptions.DryRun
+                ? "Dry-run completed."
+                : "Sync completed.");
+            return 0;
+
+        default:
+            Console.Error.WriteLine($"Unknown command: {command}");
+            PrintUsage();
+            return 2;
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine(ex.Message);
+    return 1;
+}
+
+static void PrintPreview(IReadOnlyList<IntervalsEvent> events)
+{
+    Console.WriteLine($"Planned events: {events.Count}");
+    foreach (var item in events)
+    {
+        Console.WriteLine($"- {item.Date:yyyy-MM-dd} | {item.Name}");
+    }
+
+    Console.WriteLine();
+}
+
+static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
+{
+    var options = ParseOptions(args);
+
+    var athleteId = GetOption(options, "athlete-id")
+        ?? Environment.GetEnvironmentVariable("INTERVALS_ATHLETE_ID");
+    var apiKey = GetOption(options, "api-key")
+        ?? Environment.GetEnvironmentVariable("INTERVALS_API_KEY");
+    var baseUrl = GetOption(options, "base-url")
+        ?? Environment.GetEnvironmentVariable("INTERVALS_BASE_URL")
+        ?? "https://intervals.icu";
+    var dryRun = options.ContainsKey("dry-run");
+
+    if (string.IsNullOrWhiteSpace(athleteId))
+    {
+        throw new ArgumentException("Missing --athlete-id (or INTERVALS_ATHLETE_ID).");
+    }
+
+    if (string.IsNullOrWhiteSpace(apiKey))
+    {
+        throw new ArgumentException("Missing --api-key (or INTERVALS_API_KEY).");
+    }
+
+    return new IntervalsOptions
+    {
+        AthleteId = athleteId,
+        ApiKey = apiKey,
+        BaseUrl = baseUrl,
+        DryRun = dryRun
+    };
+}
+
+static Dictionary<string, string?> ParseOptions(IReadOnlyList<string> args)
+{
+    var options = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+    for (var i = 2; i < args.Count; i++)
+    {
+        var token = args[i];
+        if (!token.StartsWith("--", StringComparison.Ordinal))
+        {
+            continue;
+        }
+
+        var key = token[2..];
+        if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+        {
+            options[key] = args[i + 1];
+            i++;
+        }
+        else
+        {
+            options[key] = null;
+        }
+    }
+
+    return options;
+}
+
+static string? GetOption(IReadOnlyDictionary<string, string?> options, string key)
+    => options.TryGetValue(key, out var value) ? value : null;
+
+static void PrintUsage()
+{
+    Console.WriteLine("Usage:");
+    Console.WriteLine("  running-plan validate <plan.yaml>");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run]");
+    Console.WriteLine();
+    Console.WriteLine("Environment variable fallback:");
+    Console.WriteLine("  INTERVALS_ATHLETE_ID");
+    Console.WriteLine("  INTERVALS_API_KEY");
+    Console.WriteLine("  INTERVALS_BASE_URL");
+}

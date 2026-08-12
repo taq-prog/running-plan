@@ -1,0 +1,12 @@
+# .NET build artifacts
+bin/
+obj/
+
+# IDE files
+.vscode/
+*.user
+*.suo
+
+# OS files
+.DS_Store
+docs/

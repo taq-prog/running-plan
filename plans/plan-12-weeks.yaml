@@ -1,0 +1,448 @@
+meta:
+  name: "12-week base + durability"
+  start_date: 2026-08-17
+  timezone: "Europe/Moscow"
+  default_targets:
+    easy_hr:
+      min: 120
+      max: 135
+    steady_hr:
+      min: 135
+      max: 150
+    tempo_hr:
+      min: 150
+      max: 165
+
+weeks:
+  - number: 1
+    workouts:
+      - id: w01-tu-easy
+        name: "W01 Tue Easy 4 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-01"]
+      - id: w01-th-easy
+        name: "W01 Thu Easy 4 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-01"]
+      - id: w01-su-long
+        name: "W01 Sun Long 6 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-01"]
+
+  - number: 2
+    workouts:
+      - id: w02-tu-easy
+        name: "W02 Tue Easy 4 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-02"]
+      - id: w02-th-easy
+        name: "W02 Thu Easy 5 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-02"]
+      - id: w02-su-long
+        name: "W02 Sun Long 7 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 7
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-02"]
+
+  - number: 3
+    workouts:
+      - id: w03-tu-easy
+        name: "W03 Tue Easy 5 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-03"]
+      - id: w03-th-easy
+        name: "W03 Thu Easy 5 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-03"]
+      - id: w03-su-long
+        name: "W03 Sun Long 8 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 8
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-03"]
+
+  - number: 4
+    workouts:
+      - id: w04-tu-easy
+        name: "W04 Tue Easy 4 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-04", "deload"]
+      - id: w04-th-easy
+        name: "W04 Thu Easy 4 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-04", "deload"]
+      - id: w04-su-long
+        name: "W04 Sun Long 6 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-04", "deload"]
+
+  - number: 5
+    workouts:
+      - id: w05-tu-easy-strides
+        name: "W05 Tue Easy 5 km + strides"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        steps:
+          - kind: easy
+            distance_km: 4
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 4
+            steps:
+              - kind: stride
+                duration_min: 1
+                note: "20 sec fast / 40 sec walk-jog"
+        tags: ["easy", "strides", "week-05"]
+      - id: w05-th-easy
+        name: "W05 Thu Easy 5 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-05"]
+      - id: w05-su-long
+        name: "W05 Sun Long 9 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 9
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-05"]
+
+  - number: 6
+    workouts:
+      - id: w06-tu-easy
+        name: "W06 Tue Easy 5 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-06"]
+      - id: w06-th-easy
+        name: "W06 Thu Easy 6 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-06"]
+      - id: w06-su-long
+        name: "W06 Sun Long 10 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 10
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-06"]
+
+  - number: 7
+    workouts:
+      - id: w07-tu-tempo
+        name: "W07 Tue Tempo 3x6 min"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        steps:
+          - kind: warmup
+            distance_km: 2
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 3
+            steps:
+              - kind: tempo
+                duration_min: 6
+                target_hr: { min: 150, max: 165 }
+              - kind: recovery
+                duration_min: 2
+                target_hr: { min: 120, max: 135 }
+          - kind: cooldown
+            distance_km: 1
+            target_hr: { min: 120, max: 130 }
+        tags: ["tempo", "week-07"]
+      - id: w07-th-easy
+        name: "W07 Thu Easy 5 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-07"]
+      - id: w07-su-long
+        name: "W07 Sun Long 11 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 11
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-07"]
+
+  - number: 8
+    workouts:
+      - id: w08-tu-easy
+        name: "W08 Tue Easy 5 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-08", "deload"]
+      - id: w08-th-easy
+        name: "W08 Thu Easy 5 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-08", "deload"]
+      - id: w08-su-long
+        name: "W08 Sun Long 8 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 8
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-08", "deload"]
+
+  - number: 9
+    workouts:
+      - id: w09-tu-tempo
+        name: "W09 Tue Tempo 3x6 min"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        steps:
+          - kind: warmup
+            distance_km: 2
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 3
+            steps:
+              - kind: tempo
+                duration_min: 6
+                target_hr: { min: 150, max: 165 }
+              - kind: recovery
+                duration_min: 2
+                target_hr: { min: 120, max: 135 }
+          - kind: cooldown
+            distance_km: 1
+            target_hr: { min: 120, max: 130 }
+        tags: ["tempo", "week-09"]
+      - id: w09-th-easy
+        name: "W09 Thu Easy 6 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-09"]
+      - id: w09-su-long
+        name: "W09 Sun Long 12 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 12
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-09"]
+
+  - number: 10
+    workouts:
+      - id: w10-tu-strides
+        name: "W10 Tue 6 km + strides"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        steps:
+          - kind: warmup
+            distance_km: 2
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 4
+            steps:
+              - kind: stride
+                duration_min: 1
+                note: "20 sec fast / 40 sec easy"
+              - kind: recovery
+                duration_min: 1
+                target_hr: { min: 120, max: 130 }
+          - kind: easy
+            distance_km: 3
+            target_hr: { min: 120, max: 135 }
+        tags: ["strides", "week-10"]
+      - id: w10-th-easy
+        name: "W10 Thu Easy 6 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-10"]
+      - id: w10-su-progressive
+        name: "W10 Sun Progressive Long 13 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 13
+        steps:
+          - kind: easy
+            distance_km: 9
+            target_hr: { min: 120, max: 135 }
+          - kind: steady
+            distance_km: 1
+            target_hr: { min: 135, max: 145 }
+          - kind: steady
+            distance_km: 1
+            target_hr: { min: 140, max: 150 }
+          - kind: moderate
+            distance_km: 1
+            target_hr: { min: 145, max: 155 }
+          - kind: marathon
+            distance_km: 1
+            target_hr: { min: 150, max: 160 }
+        tags: ["progressive", "long", "week-10"]
+
+  - number: 11
+    workouts:
+      - id: w11-tu-quality
+        name: "W11 Tue Quality 3x8 min tempo"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 7
+        steps:
+          - kind: warmup
+            distance_km: 2
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 3
+            steps:
+              - kind: tempo
+                duration_min: 8
+                target_hr: { min: 150, max: 165 }
+              - kind: recovery
+                duration_min: 2
+                target_hr: { min: 120, max: 135 }
+          - kind: cooldown
+            distance_km: 1
+            target_hr: { min: 120, max: 130 }
+        tags: ["quality", "tempo", "week-11"]
+      - id: w11-th-easy
+        name: "W11 Thu Easy 6 km"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 6
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-11"]
+      - id: w11-su-long
+        name: "W11 Sun Long 14 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 14
+        target_hr: { min: 120, max: 135 }
+        tags: ["long", "week-11", "peak"]
+
+  - number: 12
+    workouts:
+      - id: w12-tu-easy
+        name: "W12 Tue Easy 5 km"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        target_hr: { min: 120, max: 135 }
+        tags: ["easy", "week-12", "deload"]
+      - id: w12-th-easy-strides
+        name: "W12 Thu Easy 5 km + strides"
+        day: Thursday
+        type: Run
+        category: WORKOUT
+        distance_km: 5
+        steps:
+          - kind: easy
+            distance_km: 4
+            target_hr: { min: 120, max: 135 }
+          - kind: repeat
+            repeats: 4
+            steps:
+              - kind: stride
+                duration_min: 1
+                note: "20 sec fast / 40 sec easy"
+              - kind: recovery
+                duration_min: 1
+                target_hr: { min: 120, max: 130 }
+        tags: ["easy", "strides", "week-12", "deload"]
+      - id: w12-su-progressive
+        name: "W12 Sun Progressive 10 km"
+        day: Sunday
+        type: Run
+        category: WORKOUT
+        distance_km: 10
+        steps:
+          - kind: easy
+            distance_km: 3
+            target_hr: { min: 120, max: 135 }
+          - kind: steady
+            distance_km: 3
+            target_hr: { min: 135, max: 150 }
+          - kind: moderate
+            distance_km: 2
+            target_hr: { min: 145, max: 155 }
+          - kind: marathon
+            distance_km: 2
+            target_hr: { min: 150, max: 160 }
+        tags: ["progressive", "week-12", "deload"]
