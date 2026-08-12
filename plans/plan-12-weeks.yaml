@@ -1,7 +1,7 @@
 meta:
   name: "12-week base + durability"
-  start_date: 2026-08-17
-  timezone: "Europe/Moscow"
+  start_date: 2026-08-10
+  timezone: "Asia/Almaty"
   default_targets:
     easy_hr:
       min: 120
