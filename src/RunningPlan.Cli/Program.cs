@@ -24,19 +24,33 @@ try
 
         case "sync":
             var syncOptions = ParseSyncOptions(args);
+            jsonErrorOutput = syncOptions.JsonOutput;
             var syncPlan = PlanLoader.Load(planPath);
             var mappedEvents = PlanToIntervalsMapper.Map(syncPlan, syncOptions.StructuredOnly);
-            PrintPreview(mappedEvents);
+
+            if (!syncOptions.JsonOutput)
+            {
+                PrintPreview(mappedEvents);
+            }
 
             using (var client = new HttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, syncOptions);
-                await intervalsClient.UpsertEventsAsync(mappedEvents, CancellationToken.None);
+                var report = await intervalsClient.UpsertEventsAsync(mappedEvents, CancellationToken.None);
+
+                if (syncOptions.JsonOutput)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+                }
             }
 
-            Console.WriteLine(syncOptions.DryRun
-                ? "Dry-run completed."
-                : "Sync completed.");
+            if (!syncOptions.JsonOutput)
+            {
+                Console.WriteLine(syncOptions.DryRun
+                    ? "Dry-run completed."
+                    : "Sync completed.");
+            }
+
             return 0;
 
         case "verify":
@@ -190,7 +204,7 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--no-verify]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--no-verify] [--json]");
     Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");

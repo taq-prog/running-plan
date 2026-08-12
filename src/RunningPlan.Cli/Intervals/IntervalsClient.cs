@@ -25,11 +25,15 @@ public sealed class IntervalsClient
         _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
     }
 
-    public async Task UpsertEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    public async Task<SyncReport> UpsertEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
+        var syncedCount = 0;
+        VerificationReport? verificationReport = null;
+
         if (_options.UseApplyPlan)
         {
             await ApplyPlanAsync(events, cancellationToken);
+            syncedCount = events.Count;
         }
         else
         {
@@ -66,9 +70,14 @@ public sealed class IntervalsClient
 
                 if (_options.DryRun)
                 {
-                    Console.WriteLine($"[DRY-RUN] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
-                    Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
-                    Console.WriteLine();
+                    if (!_options.JsonOutput)
+                    {
+                        Console.WriteLine($"[DRY-RUN] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+                        Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
+                        Console.WriteLine();
+                    }
+
+                    syncedCount++;
                     continue;
                 }
 
@@ -82,18 +91,34 @@ public sealed class IntervalsClient
                         $"Intervals API request failed ({(int)response.StatusCode} {response.StatusCode}) for '{plannedEvent.Uid}': {responseBody}");
                 }
 
-                Console.WriteLine($"[SYNCED] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+                if (!_options.JsonOutput)
+                {
+                    Console.WriteLine($"[SYNCED] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+                }
+
+                syncedCount++;
             }
         }
 
         if (!_options.DryRun && _options.VerifyAfterSync)
         {
-            var report = await VerifyEventsAsync(events, cancellationToken);
-            if (!report.Success)
+            verificationReport = await VerifyEventsAsync(events, cancellationToken);
+            if (!verificationReport.Success)
             {
                 throw new InvalidOperationException("Post-sync verification detected missing or mismatched events.");
             }
         }
+
+        return new SyncReport
+        {
+            Success = true,
+            DryRun = _options.DryRun,
+            ApplyPlan = _options.UseApplyPlan,
+            PlannedCount = events.Count,
+            SyncedCount = syncedCount,
+            VerificationAttempted = !_options.DryRun && _options.VerifyAfterSync,
+            Verification = verificationReport
+        };
     }
 
     public async Task<VerificationReport> VerifyEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
@@ -271,9 +296,13 @@ public sealed class IntervalsClient
 
         if (_options.DryRun)
         {
-            Console.WriteLine($"[DRY-RUN apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
-            Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
-            Console.WriteLine();
+            if (!_options.JsonOutput)
+            {
+                Console.WriteLine($"[DRY-RUN apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
+                Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
+                Console.WriteLine();
+            }
+
             return;
         }
 
@@ -288,6 +317,9 @@ public sealed class IntervalsClient
                 $"Intervals apply-plan failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
         }
 
-        Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
+        if (!_options.JsonOutput)
+        {
+            Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
+        }
     }
 }

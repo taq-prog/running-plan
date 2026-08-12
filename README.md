@@ -17,6 +17,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --no-verify` to skip post-sync verification call
+  - `sync --json` to emit machine-readable sync output for CI/automation
   - `verify --json` to emit machine-readable verification output for CI/automation
 
 ## Project layout
@@ -69,6 +70,12 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --dry-run \
   --apply-plan \
   --folder-id 0
+
+dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --dry-run \
+  --json
 ```
 
 ## Sync (real)
