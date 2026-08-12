@@ -28,6 +28,24 @@ properties:
           easy_hr: { $ref: "#/$defs/hrRange" }
           steady_hr: { $ref: "#/$defs/hrRange" }
           tempo_hr: { $ref: "#/$defs/hrRange" }
+      hr_profile:
+        type: object
+        required: [threshold, max, hrrc_min, zones]
+        properties:
+          threshold: { type: integer, minimum: 50, maximum: 230 }
+          max: { type: integer, minimum: 50, maximum: 230 }
+          hrrc_min: { type: integer, minimum: 50, maximum: 230 }
+          zones:
+            type: object
+            required: [z1, z2, z3, z4, z5, z6, z7]
+            properties:
+              z1: { $ref: "#/$defs/hrRange" }
+              z2: { $ref: "#/$defs/hrRange" }
+              z3: { $ref: "#/$defs/hrRange" }
+              z4: { $ref: "#/$defs/hrRange" }
+              z5: { $ref: "#/$defs/hrRange" }
+              z6: { $ref: "#/$defs/hrRange" }
+              z7: { $ref: "#/$defs/hrRange" }
   weeks:
     type: array
     minItems: 1
@@ -51,7 +69,7 @@ $defs:
     properties:
       min:
         type: integer
-        minimum: 50
+        minimum: 0
         maximum: 230
       max:
         type: integer

@@ -20,7 +20,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
   - `sync --plan-name` to control the auto-created plan name
   - `sync --start-time-local` to set planned workout local start time (default `00:00`)
-  - `sync --cleanup-plan-before-apply` to delete existing events with the same `plan_name` in the plan date range before apply-plan
+  - `sync --cleanup-plan-before-apply` to delete matching planned events before sync (both apply-plan and per-event modes)
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
     - includes `CleanupDeletedCount` (number of events removed by `--cleanup-plan-before-apply`)

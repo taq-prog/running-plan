@@ -33,13 +33,35 @@ public sealed class PlanMeta
 
     [YamlMember(Alias = "default_targets")]
     public DefaultTargets DefaultTargets { get; init; } = new();
+
+    [YamlMember(Alias = "hr_profile")]
+    public HeartRateProfile HrProfile { get; init; } = new();
 }
 
 public sealed class DefaultTargets
 {
-    public HeartRateRange EasyHr { get; init; } = new() { Min = 120, Max = 135 };
-    public HeartRateRange SteadyHr { get; init; } = new() { Min = 135, Max = 150 };
-    public HeartRateRange TempoHr { get; init; } = new() { Min = 150, Max = 165 };
+    public HeartRateRange EasyHr { get; init; } = new() { Min = 125, Max = 145 };
+    public HeartRateRange SteadyHr { get; init; } = new() { Min = 145, Max = 160 };
+    public HeartRateRange TempoHr { get; init; } = new() { Min = 165, Max = 175 };
+}
+
+public sealed class HeartRateProfile
+{
+    public int Threshold { get; init; } = 181;
+    public int Max { get; init; } = 199;
+    public int HrrcMin { get; init; } = 181;
+    public HeartRateZones Zones { get; init; } = new();
+}
+
+public sealed class HeartRateZones
+{
+    public HeartRateRange Z1 { get; init; } = new() { Min = 0, Max = 152 };
+    public HeartRateRange Z2 { get; init; } = new() { Min = 153, Max = 161 };
+    public HeartRateRange Z3 { get; init; } = new() { Min = 162, Max = 170 };
+    public HeartRateRange Z4 { get; init; } = new() { Min = 171, Max = 180 };
+    public HeartRateRange Z5 { get; init; } = new() { Min = 181, Max = 185 };
+    public HeartRateRange Z6 { get; init; } = new() { Min = 186, Max = 190 };
+    public HeartRateRange Z7 { get; init; } = new() { Min = 191, Max = 199 };
 }
 
 public sealed class TrainingWeek
@@ -102,7 +124,7 @@ public sealed class WorkoutStep
 
 public sealed class HeartRateRange
 {
-    [Range(50, 230)]
+    [Range(0, 230)]
     public int Min { get; init; }
 
     [Range(50, 230)]

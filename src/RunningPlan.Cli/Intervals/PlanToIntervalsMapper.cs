@@ -14,10 +14,7 @@ public static class PlanToIntervalsMapper
             foreach (var workout in week.Workouts)
             {
                 var date = ComputeDate(plan.Meta.StartDate, week.Number, workout.Day);
-                var description = BuildDescription(week.Number, workout);
-                var workoutDoc = structuredOnly && workout.Steps.Count == 0
-                    ? null
-                    : BuildWorkoutDoc(workout);
+                var description = BuildDescription(workout);
                 mapped.Add(new IntervalsEvent
                 {
                     Uid = $"rp-w{week.Number:D2}-{workout.Id}",
@@ -29,7 +26,6 @@ public static class PlanToIntervalsMapper
                     Category = workout.Category,
                     DistanceMeters = workout.DistanceKm.HasValue ? workout.DistanceKm.Value * 1000 : null,
                     MovingTimeSeconds = workout.DurationMin.HasValue ? workout.DurationMin.Value * 60 : null,
-                    WorkoutDoc = workoutDoc,
                     Tags = workout.Tags
                 });
             }
@@ -38,136 +34,58 @@ public static class PlanToIntervalsMapper
         return mapped.OrderBy(x => x.Date).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private static DateOnly ComputeDate(DateOnly startMonday, int weekNumber, WeekDay day)
+    private static DateOnly ComputeDate(DateOnly startDate, int weekNumber, WeekDay day)
     {
-        var baseDate = startMonday.AddDays((weekNumber - 1) * 7);
-        return baseDate.AddDays(day switch
+        var baseDate = startDate.AddDays((weekNumber - 1) * 7);
+        var requestedDay = day switch
         {
-            WeekDay.Monday => 0,
-            WeekDay.Tuesday => 1,
-            WeekDay.Wednesday => 2,
-            WeekDay.Thursday => 3,
-            WeekDay.Friday => 4,
-            WeekDay.Saturday => 5,
-            WeekDay.Sunday => 6,
+            WeekDay.Monday => DayOfWeek.Monday,
+            WeekDay.Tuesday => DayOfWeek.Tuesday,
+            WeekDay.Wednesday => DayOfWeek.Wednesday,
+            WeekDay.Thursday => DayOfWeek.Thursday,
+            WeekDay.Friday => DayOfWeek.Friday,
+            WeekDay.Saturday => DayOfWeek.Saturday,
+            WeekDay.Sunday => DayOfWeek.Sunday,
             _ => throw new ArgumentOutOfRangeException(nameof(day), day, null)
-        });
+        };
+
+        var offset = ((int)requestedDay - (int)baseDate.DayOfWeek + 7) % 7;
+        return baseDate.AddDays(offset);
     }
 
-    private static string BuildDescription(int weekNumber, PlannedWorkout workout)
+    private static string BuildDescription(PlannedWorkout workout)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"Week {weekNumber} / {workout.Day}");
-
-        if (workout.TargetHr is not null)
+        if (workout.Steps.Count == 0)
         {
-            sb.AppendLine($"Target HR: {workout.TargetHr.Min}-{workout.TargetHr.Max} bpm");
+            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.TargetHr);
+            return sb.ToString().TrimEnd();
         }
 
-        if (workout.DistanceKm.HasValue)
-        {
-            sb.AppendLine($"Distance: {workout.DistanceKm.Value} km");
-        }
-
-        if (workout.DurationMin.HasValue)
-        {
-            sb.AppendLine($"Duration: {workout.DurationMin.Value} min");
-        }
-
-        if (workout.Steps.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("Steps:");
-            AppendSteps(sb, workout.Steps, 0);
-        }
-
+        AppendBuilderSteps(sb, workout.Steps);
         return sb.ToString().TrimEnd();
     }
 
-    private static IntervalsWorkoutDoc BuildWorkoutDoc(PlannedWorkout workout)
+    private static void AppendBuilderSteps(StringBuilder sb, IReadOnlyList<WorkoutStep> steps)
     {
-        var doc = new IntervalsWorkoutDoc();
-
-        if (workout.Steps.Count > 0)
-        {
-            doc.Steps.AddRange(workout.Steps.Select(MapStep));
-            return doc;
-        }
-
-        var baseStep = new IntervalsWorkoutStepDoc
-        {
-            Kind = "main",
-            DistanceKm = workout.DistanceKm,
-            DurationMin = workout.DurationMin,
-            TargetHr = MapTarget(workout.TargetHr),
-            Note = "Auto-generated from simple workout"
-        };
-
-        doc.Steps.Add(baseStep);
-        return doc;
-    }
-
-    private static IntervalsWorkoutStepDoc MapStep(WorkoutStep step)
-        => new()
-        {
-            Kind = step.Kind,
-            Repeats = step.Repeats,
-            DistanceKm = step.DistanceKm,
-            DurationMin = step.DurationMin,
-            TargetHr = MapTarget(step.TargetHr),
-            Note = step.Note,
-            Steps = step.Steps.Select(MapStep).ToList()
-        };
-
-    private static IntervalsHeartRateTargetDoc? MapTarget(HeartRateRange? target)
-        => target is null
-            ? null
-            : new IntervalsHeartRateTargetDoc
-            {
-                Min = target.Min,
-                Max = target.Max
-            };
-
-    private static void AppendSteps(StringBuilder sb, IReadOnlyList<WorkoutStep> steps, int level)
-    {
-        var indent = new string(' ', level * 2);
         foreach (var step in steps)
         {
             if (step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase))
             {
-                sb.AppendLine($"{indent}- Repeat x{step.Repeats}");
-                AppendSteps(sb, step.Steps, level + 1);
+                sb.AppendLine($"{step.Repeats}x");
+                AppendBuilderSteps(sb, step.Steps);
+                sb.AppendLine();
                 continue;
             }
 
-            var metrics = new List<string>();
-            if (step.DistanceKm.HasValue)
-            {
-                metrics.Add($"{step.DistanceKm.Value} km");
-            }
-
-            if (step.DurationMin.HasValue)
-            {
-                metrics.Add($"{step.DurationMin.Value} min");
-            }
-
-            if (step.TargetHr is not null)
-            {
-                metrics.Add($"HR {step.TargetHr.Min}-{step.TargetHr.Max}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(step.Note))
-            {
-                metrics.Add(step.Note.Trim());
-            }
-
-            var summary = metrics.Count == 0 ? step.Kind : $"{step.Kind}: {string.Join(" | ", metrics)}";
-            sb.AppendLine($"{indent}- {summary}");
-
-            if (step.Steps.Count > 0)
-            {
-                AppendSteps(sb, step.Steps, level + 1);
-            }
+            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.TargetHr);
         }
+    }
+
+    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, HeartRateRange? target)
+    {
+        var measurement = distanceKm.HasValue ? $"{distanceKm.Value}km" : $"{durationMin ?? 0}m";
+        var targetText = target is null ? string.Empty : $" {target.Min}-{target.Max} HR";
+        sb.AppendLine($"- {measurement}{targetText}");
     }
 }

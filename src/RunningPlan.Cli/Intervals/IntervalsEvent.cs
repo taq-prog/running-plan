@@ -11,6 +11,5 @@ public sealed class IntervalsEvent
     public required string Category { get; init; }
     public int? DistanceMeters { get; init; }
     public int? MovingTimeSeconds { get; init; }
-    public object? WorkoutDoc { get; init; }
     public IReadOnlyList<string> Tags { get; init; } = [];
 }

@@ -51,6 +51,13 @@ public sealed class IntervalsClient
         VerificationReport? verificationReport = null;
         var usedApplyPlan = _options.UseApplyPlan;
 
+        if (!_options.UseApplyPlan && !_options.DryRun && _options.CleanupPlanBeforeApply)
+        {
+            var cleanupResult = await CleanupAllMatchingPlannedEventsAsync(events, cancellationToken);
+            cleanupDeletedCount = cleanupResult.DeletedCount;
+            cleanupDuplicateSignaturesBefore = cleanupResult.DuplicateSignaturesBefore;
+        }
+
         if (_options.UseApplyPlan)
         {
             var applyPlanResult = await ApplyPlanAsync(events, cancellationToken);
@@ -184,11 +191,6 @@ public sealed class IntervalsClient
             if (plannedEvent.MovingTimeSeconds.HasValue)
             {
                 payload["moving_time"] = plannedEvent.MovingTimeSeconds.Value;
-            }
-
-            if (plannedEvent.WorkoutDoc is not null)
-            {
-                payload["workout_doc"] = plannedEvent.WorkoutDoc;
             }
 
             var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
@@ -491,11 +493,6 @@ public sealed class IntervalsClient
                 ["tags"] = evt.Tags,
                 ["external_id"] = evt.ExternalId
             };
-
-            if (evt.WorkoutDoc is not null)
-            {
-                workout["workout_doc"] = evt.WorkoutDoc;
-            }
 
             if (evt.DistanceMeters.HasValue)
             {
