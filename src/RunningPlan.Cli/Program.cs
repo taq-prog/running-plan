@@ -72,6 +72,14 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         ?? "https://intervals.icu";
     var dryRun = options.ContainsKey("dry-run");
     var structuredOnly = options.ContainsKey("structured-only");
+    var useApplyPlan = options.ContainsKey("apply-plan");
+    var folderIdRaw = GetOption(options, "folder-id");
+    var folderId = 0;
+
+    if (!string.IsNullOrWhiteSpace(folderIdRaw) && !int.TryParse(folderIdRaw, out folderId))
+    {
+        throw new ArgumentException("--folder-id must be an integer.");
+    }
 
     if (string.IsNullOrWhiteSpace(athleteId))
     {
@@ -89,7 +97,9 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         ApiKey = apiKey,
         BaseUrl = baseUrl,
         DryRun = dryRun,
-        StructuredOnly = structuredOnly
+        StructuredOnly = structuredOnly,
+        UseApplyPlan = useApplyPlan,
+        FolderId = folderId
     };
 }
 
@@ -127,7 +137,7 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");

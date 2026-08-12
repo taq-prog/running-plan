@@ -7,4 +7,6 @@ public sealed class IntervalsOptions
     public string BaseUrl { get; init; } = "https://intervals.icu";
     public bool DryRun { get; init; }
     public bool StructuredOnly { get; init; }
+    public bool UseApplyPlan { get; init; }
+    public int FolderId { get; init; }
 }

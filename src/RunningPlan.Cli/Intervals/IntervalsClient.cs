@@ -27,6 +27,12 @@ public sealed class IntervalsClient
 
     public async Task UpsertEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
+        if (_options.UseApplyPlan)
+        {
+            await ApplyPlanAsync(events, cancellationToken);
+            return;
+        }
+
         foreach (var plannedEvent in events)
         {
             var payload = new Dictionary<string, object?>
@@ -78,5 +84,75 @@ public sealed class IntervalsClient
 
             Console.WriteLine($"[SYNCED] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
         }
+    }
+
+    private async Task ApplyPlanAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = events.OrderBy(x => x.Date).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var startDate = ordered[0].Date;
+
+        var extraWorkouts = ordered.Select(evt =>
+        {
+            var workout = new Dictionary<string, object?>
+            {
+                ["name"] = evt.Name,
+                ["description"] = evt.Description,
+                ["type"] = evt.Type,
+                ["day"] = evt.Date.DayNumber - startDate.DayNumber,
+                ["days"] = 1,
+                ["tags"] = evt.Tags,
+                ["external_id"] = evt.ExternalId
+            };
+
+            if (evt.WorkoutDoc is not null)
+            {
+                workout["workout_doc"] = evt.WorkoutDoc;
+            }
+
+            if (evt.DistanceMeters.HasValue)
+            {
+                workout["distance"] = evt.DistanceMeters.Value;
+            }
+
+            if (evt.MovingTimeSeconds.HasValue)
+            {
+                workout["moving_time"] = evt.MovingTimeSeconds.Value;
+            }
+
+            return workout;
+        }).ToList();
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["start_date_local"] = startDate.ToString("yyyy-MM-dd"),
+            ["folder_id"] = _options.FolderId,
+            ["extra_workouts"] = extraWorkouts
+        };
+
+        if (_options.DryRun)
+        {
+            Console.WriteLine($"[DRY-RUN apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
+            Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
+            Console.WriteLine();
+            return;
+        }
+
+        var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/apply-plan";
+        var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Intervals apply-plan failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
+        }
+
+        Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
     }
 }
