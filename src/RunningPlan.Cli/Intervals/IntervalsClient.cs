@@ -102,6 +102,8 @@ public sealed class IntervalsClient
                 OldestDate = DateOnly.MinValue,
                 NewestDate = DateOnly.MinValue,
                 CandidateCount = 0,
+                DuplicateSignaturesBefore = 0,
+                DuplicateSignaturesAfter = 0,
                 DeletedCount = 0
             };
         }
@@ -112,7 +114,11 @@ public sealed class IntervalsClient
         var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
         var candidateEvents = await GetExistingEventsForPlannedSignaturesAsync(events, cleanupOldestDate, cleanupNewestDate, cancellationToken);
         var candidateIds = candidateEvents.Select(x => x.Id).Distinct().ToList();
+        var duplicateSignaturesBefore = candidateEvents
+            .GroupBy(x => x.Signature, StringComparer.OrdinalIgnoreCase)
+            .Count(group => group.Count() > 1);
         var deletedCount = 0;
+        var duplicateSignaturesAfter = duplicateSignaturesBefore;
 
         if (!_options.DryRun)
         {
@@ -127,6 +133,7 @@ public sealed class IntervalsClient
                 .ToList();
 
             deletedCount = await DeleteEventsByIdAsync(idsToDelete, cancellationToken);
+            duplicateSignaturesAfter = 0;
         }
 
         return new CleanupReport
@@ -137,6 +144,8 @@ public sealed class IntervalsClient
             OldestDate = oldestDate,
             NewestDate = newestDate,
             CandidateCount = candidateIds.Count,
+            DuplicateSignaturesBefore = duplicateSignaturesBefore,
+            DuplicateSignaturesAfter = duplicateSignaturesAfter,
             DeletedCount = deletedCount
         };
     }

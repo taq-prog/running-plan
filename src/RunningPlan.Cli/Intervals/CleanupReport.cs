@@ -8,5 +8,7 @@ public sealed class CleanupReport
     public required DateOnly OldestDate { get; init; }
     public required DateOnly NewestDate { get; init; }
     public required int CandidateCount { get; init; }
+    public required int DuplicateSignaturesBefore { get; init; }
+    public required int DuplicateSignaturesAfter { get; init; }
     public required int DeletedCount { get; init; }
 }
