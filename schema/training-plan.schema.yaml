@@ -19,6 +19,9 @@ properties:
       timezone:
         type: string
         minLength: 3
+      start_time_local:
+        type: string
+        pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
       default_targets:
         type: object
         properties:

@@ -27,6 +27,10 @@ public sealed class PlanMeta
     [YamlMember(Alias = "timezone")]
     public string TimeZone { get; init; } = "Europe/Moscow";
 
+    [YamlMember(Alias = "start_time_local")]
+    [RegularExpression("^([01]\\d|2[0-3]):[0-5]\\d$")]
+    public string StartTimeLocal { get; init; } = "00:00";
+
     [YamlMember(Alias = "default_targets")]
     public DefaultTargets DefaultTargets { get; init; } = new();
 }

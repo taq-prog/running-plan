@@ -34,6 +34,7 @@ public static class PlanLoader
         var results = new List<ValidationResult>();
         var context = new ValidationContext(plan);
         Validator.TryValidateObject(plan, context, results, validateAllProperties: true);
+        Validator.TryValidateObject(plan.Meta, new ValidationContext(plan.Meta), results, validateAllProperties: true);
 
         var weekNumbers = new HashSet<int>();
         foreach (var week in plan.Weeks)

@@ -19,6 +19,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
   - `sync --plan-name` to control the auto-created plan name
+  - `sync --start-time-local` to set planned workout local start time (default `00:00`)
   - `sync --cleanup-plan-before-apply` to delete existing events with the same `plan_name` in the plan date range before apply-plan
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
@@ -65,6 +66,20 @@ dotnet build RunningPlan.slnx
 dotnet run --project src/RunningPlan.Cli -- validate plans/plan-12-weeks.yaml
 ```
 
+## YAML start time
+
+You can set default planned workout time directly in YAML:
+
+```yaml
+meta:
+  start_date: 2026-08-10
+  timezone: "Asia/Almaty"
+  start_time_local: "00:00"
+```
+
+- `meta.start_time_local` is used by default for `sync` and `cleanup`.
+- `--start-time-local HH:mm` overrides YAML for a specific run.
+
 ## Sync (preview only)
 
 ```bash
@@ -85,6 +100,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY \
   --dry-run \
+  --start-time-local 00:00 \
   --apply-plan \
   --folder-id 0
 
@@ -94,6 +110,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --api-key YOUR_API_KEY \
   --apply-plan \
   --folder-id 0 \
+  --start-time-local 00:00 \
   --create-plan-on-missing \
   --cleanup-plan-before-apply \
   --plan-name "My 12-week running plan"
@@ -162,6 +179,7 @@ Example with `.env` loaded automatically:
 dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --apply-plan \
   --folder-id 0 \
+  --start-time-local 00:00 \
   --create-plan-on-missing \
   --cleanup-plan-before-apply \
   --plan-name "My 12-week running plan" \
@@ -172,6 +190,8 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 
 - The CLI posts to `POST /api/v1/athlete/{id}/events?upsertOnUid=true`.
 - With `--apply-plan`, the CLI posts to `POST /api/v1/athlete/{id}/events/apply-plan` using one request containing `extra_workouts`.
+- Planned events are created with local start time from `--start-time-local` (default `00:00`).
+- If CLI flag is omitted, local start time comes from `meta.start_time_local` in plan YAML.
 - After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range.
 - Verification mode depends on sync mode:
   - per-event sync: checks `external_id` (+ date consistency)

@@ -855,8 +855,8 @@ public sealed class IntervalsClient
         return deleted;
     }
 
-    private static string FormatEventStartDate(DateOnly date)
-        => $"{date:yyyy-MM-dd}T00:00:00";
+    private string FormatEventStartDate(DateOnly date)
+        => $"{date:yyyy-MM-dd}T{_options.StartTimeLocal}:00";
 
     private static bool TryParseEventDate(string? value, out DateOnly date)
     {
