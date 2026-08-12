@@ -5,7 +5,7 @@ namespace RunningPlan.Cli.Intervals;
 
 public static class PlanToIntervalsMapper
 {
-    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan)
+    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan, bool structuredOnly)
     {
         var mapped = new List<IntervalsEvent>();
 
@@ -15,6 +15,9 @@ public static class PlanToIntervalsMapper
             {
                 var date = ComputeDate(plan.Meta.StartDate, week.Number, workout.Day);
                 var description = BuildDescription(week.Number, workout);
+                var workoutDoc = structuredOnly && workout.Steps.Count == 0
+                    ? null
+                    : BuildWorkoutDoc(workout);
                 mapped.Add(new IntervalsEvent
                 {
                     Uid = $"rp-w{week.Number:D2}-{workout.Id}",
@@ -26,6 +29,7 @@ public static class PlanToIntervalsMapper
                     Category = workout.Category,
                     DistanceMeters = workout.DistanceKm.HasValue ? workout.DistanceKm.Value * 1000 : null,
                     MovingTimeSeconds = workout.DurationMin.HasValue ? workout.DurationMin.Value * 60 : null,
+                    WorkoutDoc = workoutDoc,
                     Tags = workout.Tags
                 });
             }
@@ -79,6 +83,50 @@ public static class PlanToIntervalsMapper
 
         return sb.ToString().TrimEnd();
     }
+
+    private static IntervalsWorkoutDoc BuildWorkoutDoc(PlannedWorkout workout)
+    {
+        var doc = new IntervalsWorkoutDoc();
+
+        if (workout.Steps.Count > 0)
+        {
+            doc.Steps.AddRange(workout.Steps.Select(MapStep));
+            return doc;
+        }
+
+        var baseStep = new IntervalsWorkoutStepDoc
+        {
+            Kind = "main",
+            DistanceKm = workout.DistanceKm,
+            DurationMin = workout.DurationMin,
+            TargetHr = MapTarget(workout.TargetHr),
+            Note = "Auto-generated from simple workout"
+        };
+
+        doc.Steps.Add(baseStep);
+        return doc;
+    }
+
+    private static IntervalsWorkoutStepDoc MapStep(WorkoutStep step)
+        => new()
+        {
+            Kind = step.Kind,
+            Repeats = step.Repeats,
+            DistanceKm = step.DistanceKm,
+            DurationMin = step.DurationMin,
+            TargetHr = MapTarget(step.TargetHr),
+            Note = step.Note,
+            Steps = step.Steps.Select(MapStep).ToList()
+        };
+
+    private static IntervalsHeartRateTargetDoc? MapTarget(HeartRateRange? target)
+        => target is null
+            ? null
+            : new IntervalsHeartRateTargetDoc
+            {
+                Min = target.Min,
+                Max = target.Max
+            };
 
     private static void AppendSteps(StringBuilder sb, IReadOnlyList<WorkoutStep> steps, int level)
     {

@@ -12,17 +12,17 @@ var planPath = args[1].Trim();
 
 try
 {
-    var plan = PlanLoader.Load(planPath);
-
     switch (command)
     {
         case "validate":
-            Console.WriteLine($"OK: plan is valid ({plan.Weeks.Count} weeks).\nPath: {Path.GetFullPath(planPath)}");
+            var validatePlan = PlanLoader.Load(planPath);
+            Console.WriteLine($"OK: plan is valid ({validatePlan.Weeks.Count} weeks).\nPath: {Path.GetFullPath(planPath)}");
             return 0;
 
         case "sync":
-            var mappedEvents = PlanToIntervalsMapper.Map(plan);
             var syncOptions = ParseSyncOptions(args);
+            var syncPlan = PlanLoader.Load(planPath);
+            var mappedEvents = PlanToIntervalsMapper.Map(syncPlan, syncOptions.StructuredOnly);
             PrintPreview(mappedEvents);
 
             using (var client = new HttpClient())
@@ -71,6 +71,7 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         ?? Environment.GetEnvironmentVariable("INTERVALS_BASE_URL")
         ?? "https://intervals.icu";
     var dryRun = options.ContainsKey("dry-run");
+    var structuredOnly = options.ContainsKey("structured-only");
 
     if (string.IsNullOrWhiteSpace(athleteId))
     {
@@ -87,7 +88,8 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         AthleteId = athleteId,
         ApiKey = apiKey,
         BaseUrl = baseUrl,
-        DryRun = dryRun
+        DryRun = dryRun,
+        StructuredOnly = structuredOnly
     };
 }
 
@@ -125,7 +127,7 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");

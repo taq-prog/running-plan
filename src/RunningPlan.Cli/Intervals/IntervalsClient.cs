@@ -51,6 +51,11 @@ public sealed class IntervalsClient
                 payload["moving_time"] = plannedEvent.MovingTimeSeconds.Value;
             }
 
+            if (plannedEvent.WorkoutDoc is not null)
+            {
+                payload["workout_doc"] = plannedEvent.WorkoutDoc;
+            }
+
             var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
 
             if (_options.DryRun)
