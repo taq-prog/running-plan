@@ -12,10 +12,12 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
 - Commands:
   - `validate` to verify plan structure
   - `sync` to push workouts to Intervals.icu
+  - `verify` to check that planned workouts exist in Intervals.icu calendar
   - `sync --dry-run` to preview payloads without sending
   - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --no-verify` to skip post-sync verification call
+  - `verify --json` to emit machine-readable verification output for CI/automation
 
 ## Project layout
 
@@ -81,6 +83,19 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY \
   --no-verify
+```
+
+## Verify only
+
+```bash
+dotnet run --project src/RunningPlan.Cli -- verify plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY
+
+dotnet run --project src/RunningPlan.Cli -- verify plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --json
 ```
 
 You can also use env vars:

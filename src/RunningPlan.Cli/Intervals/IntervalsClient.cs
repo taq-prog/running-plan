@@ -88,15 +88,27 @@ public sealed class IntervalsClient
 
         if (!_options.DryRun && _options.VerifyAfterSync)
         {
-            await VerifySyncedEventsAsync(events, cancellationToken);
+            var report = await VerifyEventsAsync(events, cancellationToken);
+            if (!report.Success)
+            {
+                throw new InvalidOperationException("Post-sync verification detected missing or mismatched events.");
+            }
         }
     }
 
-    private async Task VerifySyncedEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    public async Task<VerificationReport> VerifyEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
         if (events.Count == 0)
         {
-            return;
+            return new VerificationReport
+            {
+                OldestDate = DateOnly.MinValue,
+                NewestDate = DateOnly.MinValue,
+                ExpectedCount = 0,
+                FoundCount = 0,
+                MissingExternalIds = [],
+                DateMismatches = []
+            };
         }
 
         var minDate = events.MinBy(x => x.Date)!.Date;
@@ -158,9 +170,22 @@ public sealed class IntervalsClient
 
         var missing = expectedIds.Where(x => !foundIds.Contains(x)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
 
-        Console.WriteLine($"[VERIFY] expected={expectedIds.Count} found={foundIds.Count} missing={missing.Count} date_mismatches={dateMismatches.Count}");
+        var report = new VerificationReport
+        {
+            OldestDate = minDate,
+            NewestDate = maxDate,
+            ExpectedCount = expectedIds.Count,
+            FoundCount = foundIds.Count,
+            MissingExternalIds = missing,
+            DateMismatches = dateMismatches
+        };
 
-        if (missing.Count > 0)
+        if (!_options.JsonOutput)
+        {
+            Console.WriteLine($"[VERIFY] expected={report.ExpectedCount} found={report.FoundCount} missing={report.MissingExternalIds.Count} date_mismatches={report.DateMismatches.Count}");
+        }
+
+        if (!_options.JsonOutput && missing.Count > 0)
         {
             Console.WriteLine("[VERIFY] Missing external_id entries:");
             foreach (var id in missing.Take(10))
@@ -174,7 +199,7 @@ public sealed class IntervalsClient
             }
         }
 
-        if (dateMismatches.Count > 0)
+        if (!_options.JsonOutput && dateMismatches.Count > 0)
         {
             Console.WriteLine("[VERIFY] Date mismatches:");
             foreach (var mismatch in dateMismatches.Take(10))
@@ -188,10 +213,12 @@ public sealed class IntervalsClient
             }
         }
 
-        if (missing.Count > 0 || dateMismatches.Count > 0)
+        if (!report.Success && !_options.JsonOutput)
         {
-            throw new InvalidOperationException("Post-sync verification detected missing or mismatched events.");
+            Console.WriteLine("[VERIFY] Verification detected missing or mismatched events.");
         }
+
+        return report;
     }
 
     private async Task ApplyPlanAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)

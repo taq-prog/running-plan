@@ -1,5 +1,8 @@
-﻿using RunningPlan.Cli.Config;
+﻿using System.Text.Json;
+using RunningPlan.Cli.Config;
 using RunningPlan.Cli.Intervals;
+
+var jsonErrorOutput = false;
 
 if (args.Length < 2)
 {
@@ -36,6 +39,40 @@ try
                 : "Sync completed.");
             return 0;
 
+        case "verify":
+            var verifyOptions = ParseSyncOptions(args);
+            jsonErrorOutput = verifyOptions.JsonOutput;
+            var verifyPlan = PlanLoader.Load(planPath);
+            var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan, verifyOptions.StructuredOnly);
+
+            if (!verifyOptions.JsonOutput)
+            {
+                PrintPreview(verifyEvents);
+            }
+
+            using (var client = new HttpClient())
+            {
+                var intervalsClient = new IntervalsClient(client, verifyOptions);
+                var report = await intervalsClient.VerifyEventsAsync(verifyEvents, CancellationToken.None);
+
+                if (verifyOptions.JsonOutput)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+                }
+
+                if (!report.Success)
+                {
+                    return 1;
+                }
+            }
+
+            if (!verifyOptions.JsonOutput)
+            {
+                Console.WriteLine("Verification completed.");
+            }
+
+            return 0;
+
         default:
             Console.Error.WriteLine($"Unknown command: {command}");
             PrintUsage();
@@ -44,7 +81,19 @@ try
 }
 catch (Exception ex)
 {
-    Console.Error.WriteLine(ex.Message);
+    if (jsonErrorOutput)
+    {
+        Console.WriteLine(JsonSerializer.Serialize(new
+        {
+            success = false,
+            error = ex.Message
+        }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+    else
+    {
+        Console.Error.WriteLine(ex.Message);
+    }
+
     return 1;
 }
 
@@ -74,6 +123,7 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
     var structuredOnly = options.ContainsKey("structured-only");
     var useApplyPlan = options.ContainsKey("apply-plan");
     var noVerify = options.ContainsKey("no-verify");
+    var jsonOutput = options.ContainsKey("json");
     var folderIdRaw = GetOption(options, "folder-id");
     var folderId = 0;
 
@@ -101,7 +151,8 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         StructuredOnly = structuredOnly,
         UseApplyPlan = useApplyPlan,
         FolderId = folderId,
-        VerifyAfterSync = !noVerify
+        VerifyAfterSync = !noVerify,
+        JsonOutput = jsonOutput
     };
 }
 
@@ -140,6 +191,7 @@ static void PrintUsage()
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
     Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--no-verify]");
+    Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");
