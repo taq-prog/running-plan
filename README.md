@@ -16,6 +16,8 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --dry-run` to preview payloads without sending
   - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
+  - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
+  - `sync --plan-name` to control the auto-created plan name
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
   - `verify --json` to emit machine-readable verification output for CI/automation
@@ -35,6 +37,14 @@ According to Intervals API docs (`/api-docs.html`), HTTP Basic auth is supported
 - Password: your API key from Intervals settings
 
 This CLI sends: `Authorization: Basic base64(API_KEY:<your-api-key>)`.
+
+## .env support
+
+The CLI auto-loads `.env` from the current directory (without overriding already-set shell env vars).
+
+1. Copy `.env.example` to `.env`
+2. Fill `INTERVALS_ATHLETE_ID` and `INTERVALS_API_KEY`
+3. Run commands without passing secrets in args
 
 ## Build
 
@@ -70,6 +80,15 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --dry-run \
   --apply-plan \
   --folder-id 0
+
+# if folder/plan is missing, create one and retry apply-plan
+dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --apply-plan \
+  --folder-id 0 \
+  --create-plan-on-missing \
+  --plan-name "My 12-week running plan"
 
 dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
@@ -110,6 +129,17 @@ You can also use env vars:
 - `INTERVALS_ATHLETE_ID`
 - `INTERVALS_API_KEY`
 - `INTERVALS_BASE_URL` (optional, default `https://intervals.icu`)
+
+Example with `.env` loaded automatically:
+
+```bash
+dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
+  --apply-plan \
+  --folder-id 0 \
+  --create-plan-on-missing \
+  --plan-name "My 12-week running plan" \
+  --json
+```
 
 ## Notes
 

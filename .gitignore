@@ -9,4 +9,7 @@ obj/
 
 # OS files
 .DS_Store
+
+# Local secrets
+.env
 docs/

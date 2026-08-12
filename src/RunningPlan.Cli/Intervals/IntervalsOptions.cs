@@ -9,6 +9,8 @@ public sealed class IntervalsOptions
     public bool StructuredOnly { get; init; }
     public bool UseApplyPlan { get; init; }
     public int FolderId { get; init; }
+    public bool CreatePlanOnMissing { get; init; }
+    public string PlanName { get; init; } = "Running Plan Auto";
     public bool VerifyAfterSync { get; init; } = true;
     public bool JsonOutput { get; init; }
 }

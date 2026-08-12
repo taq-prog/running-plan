@@ -2,6 +2,8 @@
 using RunningPlan.Cli.Config;
 using RunningPlan.Cli.Intervals;
 
+LoadDotEnv();
+
 var jsonErrorOutput = false;
 
 if (args.Length < 2)
@@ -97,11 +99,23 @@ catch (Exception ex)
 {
     if (jsonErrorOutput)
     {
-        Console.WriteLine(JsonSerializer.Serialize(new
+        if (ex is VerificationFailedException verificationError)
         {
-            success = false,
-            error = ex.Message
-        }, new JsonSerializerOptions { WriteIndented = true }));
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message,
+                verification = verificationError.Report
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        else
+        {
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                success = false,
+                error = ex.Message
+            }, new JsonSerializerOptions { WriteIndented = true }));
+        }
     }
     else
     {
@@ -136,6 +150,8 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
     var dryRun = options.ContainsKey("dry-run");
     var structuredOnly = options.ContainsKey("structured-only");
     var useApplyPlan = options.ContainsKey("apply-plan");
+    var createPlanOnMissing = options.ContainsKey("create-plan-on-missing");
+    var planName = GetOption(options, "plan-name") ?? "Running Plan Auto";
     var noVerify = options.ContainsKey("no-verify");
     var jsonOutput = options.ContainsKey("json");
     var folderIdRaw = GetOption(options, "folder-id");
@@ -165,6 +181,8 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args)
         StructuredOnly = structuredOnly,
         UseApplyPlan = useApplyPlan,
         FolderId = folderId,
+        CreatePlanOnMissing = createPlanOnMissing,
+        PlanName = planName,
         VerifyAfterSync = !noVerify,
         JsonOutput = jsonOutput
     };
@@ -204,11 +222,60 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--no-verify] [--json]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--no-verify] [--json]");
     Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");
     Console.WriteLine("  INTERVALS_API_KEY");
     Console.WriteLine("  INTERVALS_BASE_URL");
+    Console.WriteLine("  (.env is auto-loaded from current directory if present)");
+}
+
+static void LoadDotEnv()
+{
+    var path = Path.Combine(Environment.CurrentDirectory, ".env");
+    if (!File.Exists(path))
+    {
+        return;
+    }
+
+    foreach (var rawLine in File.ReadAllLines(path))
+    {
+        var line = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+        {
+            continue;
+        }
+
+        if (line.StartsWith("export ", StringComparison.OrdinalIgnoreCase))
+        {
+            line = line[7..].Trim();
+        }
+
+        var separator = line.IndexOf('=');
+        if (separator <= 0)
+        {
+            continue;
+        }
+
+        var key = line[..separator].Trim();
+        var value = line[(separator + 1)..].Trim();
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            continue;
+        }
+
+        if ((value.StartsWith('"') && value.EndsWith('"')) || (value.StartsWith('\'') && value.EndsWith('\'')))
+        {
+            value = value[1..^1];
+        }
+
+        // ponytail: do not override explicitly set shell/OS env vars.
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(key)))
+        {
+            Environment.SetEnvironmentVariable(key, value);
+        }
+    }
 }
