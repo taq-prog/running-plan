@@ -43,7 +43,7 @@ public sealed class IntervalsClient
                 {
                     ["uid"] = plannedEvent.Uid,
                     ["external_id"] = plannedEvent.ExternalId,
-                    ["start_date_local"] = plannedEvent.Date.ToString("yyyy-MM-dd"),
+                    ["start_date_local"] = FormatEventStartDate(plannedEvent.Date),
                     ["category"] = plannedEvent.Category,
                     ["type"] = plannedEvent.Type,
                     ["name"] = plannedEvent.Name,
@@ -184,7 +184,7 @@ public sealed class IntervalsClient
                 continue;
             }
 
-            if (DateOnly.TryParse(dateElement.GetString(), out var actualDate) && expectedDateByExternalId.TryGetValue(externalId, out var expectedDate))
+            if (TryParseEventDate(dateElement.GetString(), out var actualDate) && expectedDateByExternalId.TryGetValue(externalId, out var expectedDate))
             {
                 if (actualDate != expectedDate)
                 {
@@ -321,5 +321,25 @@ public sealed class IntervalsClient
         {
             Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={_options.FolderId}");
         }
+    }
+
+    private static string FormatEventStartDate(DateOnly date)
+        => $"{date:yyyy-MM-dd}T00:00:00";
+
+    private static bool TryParseEventDate(string? value, out DateOnly date)
+    {
+        if (DateOnly.TryParse(value, out date))
+        {
+            return true;
+        }
+
+        if (DateTime.TryParse(value, out var dateTime))
+        {
+            date = DateOnly.FromDateTime(dateTime);
+            return true;
+        }
+
+        date = default;
+        return false;
     }
 }
