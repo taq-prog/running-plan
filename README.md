@@ -21,6 +21,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --cleanup-plan-before-apply` to delete existing events with the same `plan_name` in the plan date range before apply-plan
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
+    - includes `CleanupDeletedCount` (number of events removed by `--cleanup-plan-before-apply`)
   - `verify --json` to emit machine-readable verification output for CI/automation
 
 ## Project layout

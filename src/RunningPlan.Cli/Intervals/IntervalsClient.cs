@@ -15,6 +15,12 @@ public sealed class IntervalsClient
     private readonly IntervalsOptions _options;
     private readonly string _baseUrl;
 
+    private sealed class ApplyPlanResult
+    {
+        public required bool Applied { get; init; }
+        public required int CleanupDeletedCount { get; init; }
+    }
+
     public IntervalsClient(HttpClient httpClient, IntervalsOptions options)
     {
         _httpClient = httpClient;
@@ -28,13 +34,16 @@ public sealed class IntervalsClient
     public async Task<SyncReport> UpsertEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
         var syncedCount = 0;
+        var cleanupDeletedCount = 0;
         VerificationReport? verificationReport = null;
         var usedApplyPlan = _options.UseApplyPlan;
 
         if (_options.UseApplyPlan)
         {
-            var applied = await ApplyPlanAsync(events, cancellationToken);
-            if (applied)
+            var applyPlanResult = await ApplyPlanAsync(events, cancellationToken);
+            cleanupDeletedCount = applyPlanResult.CleanupDeletedCount;
+
+            if (applyPlanResult.Applied)
             {
                 syncedCount = events.Count;
             }
@@ -64,6 +73,7 @@ public sealed class IntervalsClient
             Success = true,
             DryRun = _options.DryRun,
             ApplyPlan = usedApplyPlan,
+            CleanupDeletedCount = cleanupDeletedCount,
             PlannedCount = events.Count,
             SyncedCount = syncedCount,
             VerificationAttempted = !_options.DryRun && _options.VerifyAfterSync,
@@ -374,11 +384,15 @@ public sealed class IntervalsClient
         };
     }
 
-    private async Task<bool> ApplyPlanAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    private async Task<ApplyPlanResult> ApplyPlanAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
         if (events.Count == 0)
         {
-            return true;
+            return new ApplyPlanResult
+            {
+                Applied = true,
+                CleanupDeletedCount = 0
+            };
         }
 
         var ordered = events.OrderBy(x => x.Date).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
@@ -435,15 +449,20 @@ public sealed class IntervalsClient
                 Console.WriteLine();
             }
 
-            return true;
+            return new ApplyPlanResult
+            {
+                Applied = true,
+                CleanupDeletedCount = 0
+            };
         }
 
+        var cleanupDeletedCount = 0;
         if (_options.CleanupPlanBeforeApply)
         {
-            var removed = await CleanupExistingPlanEventsAsync(startDate, endDate, cancellationToken);
+            cleanupDeletedCount = await CleanupExistingPlanEventsAsync(startDate, endDate, cancellationToken);
             if (!_options.JsonOutput)
             {
-                Console.WriteLine($"[CLEANUP] Removed {removed} existing events for plan '{_options.PlanName}' before apply-plan.");
+                Console.WriteLine($"[CLEANUP] Removed {cleanupDeletedCount} existing events for plan '{_options.PlanName}' before apply-plan.");
             }
         }
 
@@ -475,7 +494,11 @@ public sealed class IntervalsClient
                         Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={createdFolderId}");
                     }
 
-                    return true;
+                    return new ApplyPlanResult
+                    {
+                        Applied = true,
+                        CleanupDeletedCount = cleanupDeletedCount
+                    };
                 }
 
                 if (retryResponse.StatusCode != System.Net.HttpStatusCode.NotFound || !retryBody.Contains("Plan not found", StringComparison.OrdinalIgnoreCase))
@@ -490,7 +513,11 @@ public sealed class IntervalsClient
                 Console.WriteLine("[INFO] apply-plan not available for this folder/account, falling back to per-event sync.");
             }
 
-            return false;
+            return new ApplyPlanResult
+            {
+                Applied = false,
+                CleanupDeletedCount = cleanupDeletedCount
+            };
         }
 
         if (!response.IsSuccessStatusCode)
@@ -504,7 +531,11 @@ public sealed class IntervalsClient
             Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={folderId}");
         }
 
-        return true;
+        return new ApplyPlanResult
+        {
+            Applied = true,
+            CleanupDeletedCount = cleanupDeletedCount
+        };
     }
 
     private async Task<int> CreatePlanFolderAsync(CancellationToken cancellationToken)
