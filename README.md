@@ -13,6 +13,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `validate` to verify plan structure
   - `sync` to push workouts to Intervals.icu
   - `verify` to check that planned workouts exist in Intervals.icu calendar
+  - `cleanup` to remove already-uploaded plan events in the plan date range by `plan_name`
   - `sync --dry-run` to preview payloads without sending
   - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
@@ -23,6 +24,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --json` to emit machine-readable sync output for CI/automation
     - includes `CleanupDeletedCount` (number of events removed by `--cleanup-plan-before-apply`)
   - `verify --json` to emit machine-readable verification output for CI/automation
+  - `cleanup --json` to emit machine-readable cleanup output for CI/automation
 
 ## Project layout
 
@@ -125,6 +127,24 @@ dotnet run --project src/RunningPlan.Cli -- verify plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY \
   --json
+```
+
+## Cleanup only (no sync)
+
+```bash
+# preview how many events would be removed
+dotnet run --project src/RunningPlan.Cli -- cleanup plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --plan-name "My 12-week running plan" \
+  --dry-run \
+  --json
+
+# execute cleanup
+dotnet run --project src/RunningPlan.Cli -- cleanup plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --plan-name "My 12-week running plan"
 ```
 
 You can also use env vars:

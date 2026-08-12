@@ -81,6 +81,44 @@ public sealed class IntervalsClient
         };
     }
 
+    public async Task<CleanupReport> CleanupPlanEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
+            return new CleanupReport
+            {
+                Success = true,
+                DryRun = _options.DryRun,
+                PlanName = _options.PlanName,
+                OldestDate = DateOnly.MinValue,
+                NewestDate = DateOnly.MinValue,
+                CandidateCount = 0,
+                DeletedCount = 0
+            };
+        }
+
+        var oldestDate = events.MinBy(x => x.Date)!.Date;
+        var newestDate = events.MaxBy(x => x.Date)!.Date;
+        var candidateIds = await GetPlanEventIdsInRangeAsync(oldestDate, newestDate, cancellationToken);
+        var deletedCount = 0;
+
+        if (!_options.DryRun)
+        {
+            deletedCount = await DeleteEventsByIdAsync(candidateIds, cancellationToken);
+        }
+
+        return new CleanupReport
+        {
+            Success = true,
+            DryRun = _options.DryRun,
+            PlanName = _options.PlanName,
+            OldestDate = oldestDate,
+            NewestDate = newestDate,
+            CandidateCount = candidateIds.Count,
+            DeletedCount = deletedCount
+        };
+    }
+
     private async Task<int> SyncEventsIndividuallyAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
     {
         var syncedCount = 0;
@@ -569,6 +607,12 @@ public sealed class IntervalsClient
 
     private async Task<int> CleanupExistingPlanEventsAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
     {
+        var eventIdsToDelete = await GetPlanEventIdsInRangeAsync(oldestDate, newestDate, cancellationToken);
+        return await DeleteEventsByIdAsync(eventIdsToDelete, cancellationToken);
+    }
+
+    private async Task<List<long>> GetPlanEventIdsInRangeAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
+    {
         var listEndpoint =
             $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
             $"?oldest={oldestDate:yyyy-MM-dd}" +
@@ -610,8 +654,13 @@ public sealed class IntervalsClient
             }
         }
 
+        return eventIdsToDelete.Distinct().ToList();
+    }
+
+    private async Task<int> DeleteEventsByIdAsync(IReadOnlyCollection<long> eventIdsToDelete, CancellationToken cancellationToken)
+    {
         var deleted = 0;
-        foreach (var eventId in eventIdsToDelete.Distinct())
+        foreach (var eventId in eventIdsToDelete)
         {
             var deleteEndpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/{eventId}";
             using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, deleteEndpoint);

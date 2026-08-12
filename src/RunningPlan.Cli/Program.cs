@@ -89,6 +89,31 @@ try
 
             return 0;
 
+        case "cleanup":
+            var cleanupOptions = ParseSyncOptions(args);
+            jsonErrorOutput = cleanupOptions.JsonOutput;
+            var cleanupPlan = PlanLoader.Load(planPath);
+            var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan, cleanupOptions.StructuredOnly);
+
+            using (var client = new HttpClient())
+            {
+                var intervalsClient = new IntervalsClient(client, cleanupOptions);
+                var report = await intervalsClient.CleanupPlanEventsAsync(cleanupEvents, CancellationToken.None);
+
+                if (cleanupOptions.JsonOutput)
+                {
+                    Console.WriteLine(JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }));
+                }
+                else
+                {
+                    Console.WriteLine(cleanupOptions.DryRun
+                        ? $"[DRY-RUN cleanup] Plan '{report.PlanName}' candidates={report.CandidateCount} in range {report.OldestDate:yyyy-MM-dd}..{report.NewestDate:yyyy-MM-dd}"
+                        : $"Cleanup completed. Plan '{report.PlanName}' deleted={report.DeletedCount} candidates={report.CandidateCount} in range {report.OldestDate:yyyy-MM-dd}..{report.NewestDate:yyyy-MM-dd}");
+                }
+            }
+
+            return 0;
+
         default:
             Console.Error.WriteLine($"Unknown command: {command}");
             PrintUsage();
@@ -226,6 +251,7 @@ static void PrintUsage()
     Console.WriteLine("  running-plan validate <plan.yaml>");
     Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply] [--no-verify] [--json]");
     Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
+    Console.WriteLine("  running-plan cleanup <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--plan-name \"Running Plan Auto\"] [--dry-run] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");
