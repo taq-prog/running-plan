@@ -5,7 +5,7 @@ namespace RunningPlan.Cli.Intervals;
 
 public static class PlanToIntervalsMapper
 {
-    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan, bool structuredOnly)
+    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan)
     {
         var mapped = new List<IntervalsEvent>();
 
@@ -58,7 +58,7 @@ public static class PlanToIntervalsMapper
         var sb = new StringBuilder();
         if (workout.Steps.Count == 0)
         {
-            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.TargetHr);
+            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.DurationSec, workout.TargetHr, null);
             return sb.ToString().TrimEnd();
         }
 
@@ -78,14 +78,19 @@ public static class PlanToIntervalsMapper
                 continue;
             }
 
-            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.TargetHr);
+            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.DurationSec, step.TargetHr, step.Note);
         }
     }
 
-    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, HeartRateRange? target)
+    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note)
     {
-        var measurement = distanceKm.HasValue ? $"{distanceKm.Value}km" : $"{durationMin ?? 0}m";
+        var measurement = distanceKm.HasValue
+            ? $"{distanceKm.Value}km"
+            : durationSec.HasValue
+                ? $"{durationSec.Value}s"
+                : $"{durationMin ?? 0}m";
         var targetText = target is null ? string.Empty : $" {target.Min}-{target.Max} HR";
-        sb.AppendLine($"- {measurement}{targetText}");
+        var cue = string.IsNullOrWhiteSpace(note) ? string.Empty : $"{note.Trim()} ";
+        sb.AppendLine($"- {cue}{measurement}{targetText}");
     }
 }

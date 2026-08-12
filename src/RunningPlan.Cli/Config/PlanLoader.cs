@@ -55,9 +55,9 @@ public static class PlanLoader
                     results.Add(new ValidationResult($"Duplicate workout id in week {week.Number}: {workout.Id}"));
                 }
 
-                if (workout.DistanceKm is null && workout.DurationMin is null && workout.Steps.Count == 0)
+                if (workout.DistanceKm is null && workout.DurationMin is null && workout.DurationSec is null && workout.Steps.Count == 0)
                 {
-                    results.Add(new ValidationResult($"Workout {workout.Id} must define distance_km, duration_min, or steps."));
+                    results.Add(new ValidationResult($"Workout {workout.Id} must define distance_km, duration_min, duration_sec, or steps."));
                 }
 
                 ValidateStepTree(week.Number, workout.Id, workout.Steps, results);
@@ -77,10 +77,10 @@ public static class PlanLoader
         {
             Validator.TryValidateObject(step, new ValidationContext(step), results, true);
 
-            var hasMetric = step.DistanceKm.HasValue || step.DurationMin.HasValue || step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase);
+            var hasMetric = step.DistanceKm.HasValue || step.DurationMin.HasValue || step.DurationSec.HasValue || step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase);
             if (!hasMetric)
             {
-                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' must define distance_km, duration_min, or be repeat."));
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' must define distance_km, duration_min, duration_sec, or be repeat."));
             }
 
             if (step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase))

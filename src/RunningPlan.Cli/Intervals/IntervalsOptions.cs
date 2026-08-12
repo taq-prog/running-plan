@@ -6,7 +6,6 @@ public sealed class IntervalsOptions
     public required string ApiKey { get; init; }
     public string BaseUrl { get; init; } = "https://intervals.icu";
     public bool DryRun { get; init; }
-    public bool StructuredOnly { get; init; }
     public bool UseApplyPlan { get; init; }
     public int FolderId { get; init; }
     public string StartTimeLocal { get; init; } = "00:00";

@@ -153,8 +153,11 @@ weeks:
             repeats: 4
             steps:
               - kind: stride
-                duration_min: 1
-                note: "20 sec fast / 40 sec walk-jog"
+                duration_sec: 20
+                note: "Fast but relaxed"
+              - kind: recovery
+                duration_sec: 40
+                note: "Easy walk-jog"
         tags: ["easy", "strides", "week-05"]
       - id: w05-th-easy
         name: "W05 Thu Easy 5 km"
@@ -327,10 +330,11 @@ weeks:
             repeats: 4
             steps:
               - kind: stride
-                duration_min: 1
-                note: "20 sec fast / 40 sec easy"
+                duration_sec: 20
+                note: "Fast but relaxed"
               - kind: recovery
-                duration_min: 1
+                duration_sec: 40
+                note: "Easy walk-jog"
                 target_hr: { min: 125, max: 140 }
           - kind: easy
             distance_km: 3
@@ -434,10 +438,11 @@ weeks:
             repeats: 4
             steps:
               - kind: stride
-                duration_min: 1
-                note: "20 sec fast / 40 sec easy"
+                duration_sec: 20
+                note: "Fast but relaxed"
               - kind: recovery
-                duration_min: 1
+                duration_sec: 40
+                note: "Easy walk-jog"
                 target_hr: { min: 125, max: 140 }
         tags: ["easy", "strides", "week-12", "deload"]
       - id: w12-su-progressive

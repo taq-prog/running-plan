@@ -98,6 +98,9 @@ $defs:
       duration_min:
         type: integer
         minimum: 1
+      duration_sec:
+        type: integer
+        minimum: 1
       target_hr:
         $ref: "#/$defs/hrRange"
       tags:
@@ -118,6 +121,9 @@ $defs:
         type: integer
         minimum: 1
       duration_min:
+        type: integer
+        minimum: 1
+      duration_sec:
         type: integer
         minimum: 1
       repeats:

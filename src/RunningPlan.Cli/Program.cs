@@ -28,7 +28,7 @@ try
             var syncPlan = PlanLoader.Load(planPath);
             var syncOptions = ParseSyncOptions(args, syncPlan.Meta.StartTimeLocal);
             jsonErrorOutput = syncOptions.JsonOutput;
-            var mappedEvents = PlanToIntervalsMapper.Map(syncPlan, syncOptions.StructuredOnly);
+            var mappedEvents = PlanToIntervalsMapper.Map(syncPlan);
 
             if (!syncOptions.JsonOutput)
             {
@@ -59,7 +59,7 @@ try
             var verifyPlan = PlanLoader.Load(planPath);
             var verifyOptions = ParseSyncOptions(args, verifyPlan.Meta.StartTimeLocal);
             jsonErrorOutput = verifyOptions.JsonOutput;
-            var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan, verifyOptions.StructuredOnly);
+            var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan);
 
             if (!verifyOptions.JsonOutput)
             {
@@ -93,7 +93,7 @@ try
             var cleanupPlan = PlanLoader.Load(planPath);
             var cleanupOptions = ParseSyncOptions(args, cleanupPlan.Meta.StartTimeLocal);
             jsonErrorOutput = cleanupOptions.JsonOutput;
-            var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan, cleanupOptions.StructuredOnly);
+            var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan);
 
             using (var client = new HttpClient())
             {
@@ -173,7 +173,6 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
         ?? Environment.GetEnvironmentVariable("INTERVALS_BASE_URL")
         ?? "https://intervals.icu";
     var dryRun = options.ContainsKey("dry-run");
-    var structuredOnly = options.ContainsKey("structured-only");
     var useApplyPlan = options.ContainsKey("apply-plan");
     var createPlanOnMissing = options.ContainsKey("create-plan-on-missing");
     var cleanupPlanBeforeApply = options.ContainsKey("cleanup-plan-before-apply");
@@ -210,7 +209,6 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
         ApiKey = apiKey,
         BaseUrl = baseUrl,
         DryRun = dryRun,
-        StructuredOnly = structuredOnly,
         UseApplyPlan = useApplyPlan,
         FolderId = folderId,
         StartTimeLocal = startTimeLocal,
@@ -256,8 +254,8 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--structured-only] [--apply-plan] [--folder-id 0] [--start-time-local 00:00] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply] [--no-verify] [--json]");
-    Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--structured-only] [--json]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--apply-plan] [--folder-id 0] [--start-time-local 00:00] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply] [--no-verify] [--json]");
+    Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--json]");
     Console.WriteLine("  running-plan cleanup <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--start-time-local 00:00] [--plan-name \"Running Plan Auto\"] [--dry-run] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");

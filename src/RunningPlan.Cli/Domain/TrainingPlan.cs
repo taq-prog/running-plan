@@ -97,6 +97,9 @@ public sealed class PlannedWorkout
 
     public int? DurationMin { get; init; }
 
+    [YamlMember(Alias = "duration_sec")]
+    public int? DurationSec { get; init; }
+
     public HeartRateRange? TargetHr { get; init; }
 
     public List<WorkoutStep> Steps { get; init; } = [];
@@ -112,6 +115,9 @@ public sealed class WorkoutStep
     public int? DistanceKm { get; init; }
 
     public int? DurationMin { get; init; }
+
+    [YamlMember(Alias = "duration_sec")]
+    public int? DurationSec { get; init; }
 
     public int? Repeats { get; init; }
 

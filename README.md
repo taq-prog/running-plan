@@ -8,14 +8,13 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
 - YAML plan schema
 - Ready 12-week plan from your chat
 - Intervals.icu API client (HTTP Basic auth, upsert by uid)
-- `workout_doc` generation for structured sessions (steps/repeats/HR targets)
+- Intervals Workout Builder syntax generation for all sessions (steps/repeats/HR targets)
 - Commands:
   - `validate` to verify plan structure
   - `sync` to push workouts to Intervals.icu
   - `verify` to check that planned workouts exist in Intervals.icu calendar
   - `cleanup` to remove already-uploaded plan events in the plan date range by `plan_name`
   - `sync --dry-run` to preview payloads without sending
-  - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
   - `sync --plan-name` to control the auto-created plan name
@@ -72,7 +71,7 @@ You can set default planned workout time directly in YAML:
 
 ```yaml
 meta:
-  start_date: 2026-08-10
+  start_date: 2026-08-11
   timezone: "Asia/Almaty"
   start_time_local: "00:00"
 ```
@@ -87,13 +86,6 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY \
   --dry-run
-
-# only tempo/progressive/step-based workouts include workout_doc
-dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
-  --athlete-id YOUR_ATHLETE_ID \
-  --api-key YOUR_API_KEY \
-  --dry-run \
-  --structured-only
 
 # upload as one apply-plan request (optionally set destination folder)
 dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
@@ -198,7 +190,6 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   - apply-plan sync: checks by `date + name` (and `plan_name` when provided), because some accounts return `external_id = null` for apply-plan-created events
 - If verification finds missing or mismatched workouts, sync exits with an error and prints a compact mismatch report.
 - Events are created as `category=WORKOUT` and `type=Run`.
-- For structured sessions, step details are included in both `description` and `workout_doc`.
-- `workout_doc` contains a nested step tree (including repeat blocks and HR ranges) so the payload remains structured end-to-end.
-- With `--structured-only`, simple easy/long workouts are sent without `workout_doc`, while workouts with `steps` keep the structured payload.
+- Every workout is sent through `description` using Intervals Workout Builder syntax, including distance/time, repeat blocks, cues, and HR targets.
+- Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.
