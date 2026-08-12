@@ -30,59 +30,167 @@ public sealed class IntervalsClient
         if (_options.UseApplyPlan)
         {
             await ApplyPlanAsync(events, cancellationToken);
+        }
+        else
+        {
+            foreach (var plannedEvent in events)
+            {
+                var payload = new Dictionary<string, object?>
+                {
+                    ["uid"] = plannedEvent.Uid,
+                    ["external_id"] = plannedEvent.ExternalId,
+                    ["start_date_local"] = plannedEvent.Date.ToString("yyyy-MM-dd"),
+                    ["category"] = plannedEvent.Category,
+                    ["type"] = plannedEvent.Type,
+                    ["name"] = plannedEvent.Name,
+                    ["description"] = plannedEvent.Description,
+                    ["tags"] = plannedEvent.Tags
+                };
+
+                if (plannedEvent.DistanceMeters.HasValue)
+                {
+                    payload["distance"] = plannedEvent.DistanceMeters.Value;
+                }
+
+                if (plannedEvent.MovingTimeSeconds.HasValue)
+                {
+                    payload["moving_time"] = plannedEvent.MovingTimeSeconds.Value;
+                }
+
+                if (plannedEvent.WorkoutDoc is not null)
+                {
+                    payload["workout_doc"] = plannedEvent.WorkoutDoc;
+                }
+
+                var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
+
+                if (_options.DryRun)
+                {
+                    Console.WriteLine($"[DRY-RUN] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+                    Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
+                    Console.WriteLine();
+                    continue;
+                }
+
+                var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events?upsertOnUid=true";
+                using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new HttpRequestException(
+                        $"Intervals API request failed ({(int)response.StatusCode} {response.StatusCode}) for '{plannedEvent.Uid}': {responseBody}");
+                }
+
+                Console.WriteLine($"[SYNCED] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+            }
+        }
+
+        if (!_options.DryRun && _options.VerifyAfterSync)
+        {
+            await VerifySyncedEventsAsync(events, cancellationToken);
+        }
+    }
+
+    private async Task VerifySyncedEventsAsync(IReadOnlyCollection<IntervalsEvent> events, CancellationToken cancellationToken)
+    {
+        if (events.Count == 0)
+        {
             return;
         }
 
-        foreach (var plannedEvent in events)
+        var minDate = events.MinBy(x => x.Date)!.Date;
+        var maxDate = events.MaxBy(x => x.Date)!.Date;
+
+        var endpoint =
+            $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
+            $"?oldest={minDate:yyyy-MM-dd}" +
+            $"&newest={maxDate:yyyy-MM-dd}" +
+            "&category=WORKOUT&limit=500";
+
+        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
         {
-            var payload = new Dictionary<string, object?>
-            {
-                ["uid"] = plannedEvent.Uid,
-                ["external_id"] = plannedEvent.ExternalId,
-                ["start_date_local"] = plannedEvent.Date.ToString("yyyy-MM-dd"),
-                ["category"] = plannedEvent.Category,
-                ["type"] = plannedEvent.Type,
-                ["name"] = plannedEvent.Name,
-                ["description"] = plannedEvent.Description,
-                ["tags"] = plannedEvent.Tags
-            };
+            throw new HttpRequestException(
+                $"Verification failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
+        }
 
-            if (plannedEvent.DistanceMeters.HasValue)
-            {
-                payload["distance"] = plannedEvent.DistanceMeters.Value;
-            }
+        using var document = JsonDocument.Parse(responseBody);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Verification response is not an array of events.");
+        }
 
-            if (plannedEvent.MovingTimeSeconds.HasValue)
-            {
-                payload["moving_time"] = plannedEvent.MovingTimeSeconds.Value;
-            }
+        var expectedDateByExternalId = events.ToDictionary(x => x.ExternalId, x => x.Date, StringComparer.OrdinalIgnoreCase);
+        var expectedIds = new HashSet<string>(expectedDateByExternalId.Keys, StringComparer.OrdinalIgnoreCase);
+        var foundIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dateMismatches = new List<string>();
 
-            if (plannedEvent.WorkoutDoc is not null)
+        foreach (var item in document.RootElement.EnumerateArray())
+        {
+            if (!item.TryGetProperty("external_id", out var externalIdElement) || externalIdElement.ValueKind != JsonValueKind.String)
             {
-                payload["workout_doc"] = plannedEvent.WorkoutDoc;
-            }
-
-            var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-
-            if (_options.DryRun)
-            {
-                Console.WriteLine($"[DRY-RUN] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
-                Console.WriteLine(JsonSerializer.Serialize(payload, JsonOptions));
-                Console.WriteLine();
                 continue;
             }
 
-            var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events?upsertOnUid=true";
-            using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
+            var externalId = externalIdElement.GetString();
+            if (string.IsNullOrWhiteSpace(externalId) || !expectedIds.Contains(externalId))
             {
-                throw new HttpRequestException(
-                    $"Intervals API request failed ({(int)response.StatusCode} {response.StatusCode}) for '{plannedEvent.Uid}': {responseBody}");
+                continue;
             }
 
-            Console.WriteLine($"[SYNCED] {plannedEvent.Date:yyyy-MM-dd} {plannedEvent.Name}");
+            foundIds.Add(externalId);
+            if (!item.TryGetProperty("start_date_local", out var dateElement) || dateElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            if (DateOnly.TryParse(dateElement.GetString(), out var actualDate) && expectedDateByExternalId.TryGetValue(externalId, out var expectedDate))
+            {
+                if (actualDate != expectedDate)
+                {
+                    dateMismatches.Add($"{externalId}: expected {expectedDate:yyyy-MM-dd}, got {actualDate:yyyy-MM-dd}");
+                }
+            }
+        }
+
+        var missing = expectedIds.Where(x => !foundIds.Contains(x)).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+
+        Console.WriteLine($"[VERIFY] expected={expectedIds.Count} found={foundIds.Count} missing={missing.Count} date_mismatches={dateMismatches.Count}");
+
+        if (missing.Count > 0)
+        {
+            Console.WriteLine("[VERIFY] Missing external_id entries:");
+            foreach (var id in missing.Take(10))
+            {
+                Console.WriteLine($"- {id}");
+            }
+
+            if (missing.Count > 10)
+            {
+                Console.WriteLine($"- ... and {missing.Count - 10} more");
+            }
+        }
+
+        if (dateMismatches.Count > 0)
+        {
+            Console.WriteLine("[VERIFY] Date mismatches:");
+            foreach (var mismatch in dateMismatches.Take(10))
+            {
+                Console.WriteLine($"- {mismatch}");
+            }
+
+            if (dateMismatches.Count > 10)
+            {
+                Console.WriteLine($"- ... and {dateMismatches.Count - 10} more");
+            }
+        }
+
+        if (missing.Count > 0 || dateMismatches.Count > 0)
+        {
+            throw new InvalidOperationException("Post-sync verification detected missing or mismatched events.");
         }
     }
 

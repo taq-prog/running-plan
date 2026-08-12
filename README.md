@@ -15,6 +15,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --dry-run` to preview payloads without sending
   - `sync --structured-only` to include `workout_doc` only for workouts with explicit steps
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
+  - `sync --no-verify` to skip post-sync verification call
 
 ## Project layout
 
@@ -74,6 +75,12 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY
+
+# run real sync without post-sync verification
+dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --no-verify
 ```
 
 You can also use env vars:
@@ -86,6 +93,8 @@ You can also use env vars:
 
 - The CLI posts to `POST /api/v1/athlete/{id}/events?upsertOnUid=true`.
 - With `--apply-plan`, the CLI posts to `POST /api/v1/athlete/{id}/events/apply-plan` using one request containing `extra_workouts`.
+- After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range and checks `external_id` + `start_date_local`.
+- If verification finds missing or mismatched workouts, sync exits with an error and prints a compact mismatch report.
 - Events are created as `category=WORKOUT` and `type=Run`.
 - For structured sessions, step details are included in both `description` and `workout_doc`.
 - `workout_doc` contains a nested step tree (including repeat blocks and HR ranges) so the payload remains structured end-to-end.

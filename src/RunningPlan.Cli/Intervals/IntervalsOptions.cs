@@ -9,4 +9,5 @@ public sealed class IntervalsOptions
     public bool StructuredOnly { get; init; }
     public bool UseApplyPlan { get; init; }
     public int FolderId { get; init; }
+    public bool VerifyAfterSync { get; init; } = true;
 }
