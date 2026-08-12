@@ -191,5 +191,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - If verification finds missing or mismatched workouts, sync exits with an error and prints a compact mismatch report.
 - Events are created as `category=WORKOUT` and `type=Run`.
 - Every workout is sent through `description` using Intervals Workout Builder syntax, including distance/time, repeat blocks, cues, and HR targets.
+- Workouts with time-based steps must include a final distance step when needed to reach their declared distance; the plan loader validates this invariant.
+- Warmup, active, recovery, and cooldown steps include matching `intensity` annotations where configured.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.

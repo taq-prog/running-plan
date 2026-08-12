@@ -158,6 +158,9 @@ weeks:
               - kind: recovery
                 duration_sec: 40
                 note: "Easy walk-jog"
+          - kind: easy
+            distance_km: 1
+            target_hr: { min: 125, max: 145 }
         tags: ["easy", "strides", "week-05"]
       - id: w05-th-easy
         name: "W05 Thu Easy 5 km"
@@ -337,7 +340,7 @@ weeks:
                 note: "Easy walk-jog"
                 target_hr: { min: 125, max: 140 }
           - kind: easy
-            distance_km: 3
+            distance_km: 4
             target_hr: { min: 125, max: 145 }
         tags: ["strides", "week-10"]
       - id: w10-th-easy
@@ -444,6 +447,9 @@ weeks:
                 duration_sec: 40
                 note: "Easy walk-jog"
                 target_hr: { min: 125, max: 140 }
+          - kind: easy
+            distance_km: 1
+            target_hr: { min: 125, max: 145 }
         tags: ["easy", "strides", "week-12", "deload"]
       - id: w12-su-progressive
         name: "W12 Sun Progressive 10 km"

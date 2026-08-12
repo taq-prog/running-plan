@@ -60,6 +60,8 @@ public static class PlanLoader
                     results.Add(new ValidationResult($"Workout {workout.Id} must define distance_km, duration_min, duration_sec, or steps."));
                 }
 
+                ValidateWorkoutDistance(week.Number, workout, results);
+
                 ValidateStepTree(week.Number, workout.Id, workout.Steps, results);
             }
         }
@@ -69,6 +71,58 @@ public static class PlanLoader
             var message = string.Join(Environment.NewLine, results.Select(x => $"- {x.ErrorMessage}"));
             throw new ValidationException($"Plan validation failed:{Environment.NewLine}{message}");
         }
+    }
+
+    private static void ValidateWorkoutDistance(int weekNumber, PlannedWorkout workout, List<ValidationResult> results)
+    {
+        if (!workout.DistanceKm.HasValue || workout.Steps.Count == 0)
+        {
+            return;
+        }
+
+        var explicitDistanceKm = SumDistanceKm(workout.Steps, out var hasTimeBasedStep);
+        if (explicitDistanceKm > workout.DistanceKm.Value)
+        {
+            results.Add(new ValidationResult($"Week {weekNumber} workout {workout.Id}: structured distance {explicitDistanceKm} km exceeds declared distance {workout.DistanceKm.Value} km."));
+            return;
+        }
+
+        if (explicitDistanceKm == workout.DistanceKm.Value || !hasTimeBasedStep)
+        {
+            return;
+        }
+
+        var lastStep = workout.Steps[^1];
+        if (lastStep.DistanceKm is null)
+        {
+            results.Add(new ValidationResult($"Week {weekNumber} workout {workout.Id}: add a final distance step to account for the declared {workout.DistanceKm.Value} km after time-based steps."));
+        }
+    }
+
+    private static int SumDistanceKm(IReadOnlyCollection<WorkoutStep> steps, out bool hasTimeBasedStep)
+    {
+        hasTimeBasedStep = false;
+        var totalDistanceKm = 0;
+        foreach (var step in steps)
+        {
+            if (step.DistanceKm.HasValue)
+            {
+                totalDistanceKm += step.DistanceKm.Value * Math.Max(step.Repeats ?? 1, 1);
+            }
+
+            if (step.DurationMin.HasValue || step.DurationSec.HasValue)
+            {
+                hasTimeBasedStep = true;
+            }
+
+            if (step.Steps.Count > 0)
+            {
+                totalDistanceKm += (step.Repeats ?? 1) * SumDistanceKm(step.Steps, out var nestedHasTimeBasedStep);
+                hasTimeBasedStep |= nestedHasTimeBasedStep;
+            }
+        }
+
+        return totalDistanceKm;
     }
 
     private static void ValidateStepTree(int weekNumber, string workoutId, IReadOnlyCollection<WorkoutStep> steps, List<ValidationResult> results)

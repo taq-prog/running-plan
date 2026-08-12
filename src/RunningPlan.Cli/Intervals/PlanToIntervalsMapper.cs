@@ -58,7 +58,7 @@ public static class PlanToIntervalsMapper
         var sb = new StringBuilder();
         if (workout.Steps.Count == 0)
         {
-            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.DurationSec, workout.TargetHr, null);
+            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.DurationSec, workout.TargetHr, null, null);
             return sb.ToString().TrimEnd();
         }
 
@@ -78,11 +78,11 @@ public static class PlanToIntervalsMapper
                 continue;
             }
 
-            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.DurationSec, step.TargetHr, step.Note);
+            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.DurationSec, step.TargetHr, step.Note, step.Kind);
         }
     }
 
-    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note)
+    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, string? kind)
     {
         var measurement = distanceKm.HasValue
             ? $"{distanceKm.Value}km"
@@ -91,6 +91,14 @@ public static class PlanToIntervalsMapper
                 : $"{durationMin ?? 0}m";
         var targetText = target is null ? string.Empty : $" {target.Min}-{target.Max} HR";
         var cue = string.IsNullOrWhiteSpace(note) ? string.Empty : $"{note.Trim()} ";
-        sb.AppendLine($"- {cue}{measurement}{targetText}");
+        var intensity = kind?.ToLowerInvariant() switch
+        {
+            "warmup" => " intensity=warmup",
+            "stride" or "tempo" => " intensity=active",
+            "recovery" => " intensity=recovery",
+            "cooldown" => " intensity=cooldown",
+            _ => string.Empty
+        };
+        sb.AppendLine($"- {cue}{measurement}{targetText}{intensity}");
     }
 }
