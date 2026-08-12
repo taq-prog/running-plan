@@ -542,10 +542,10 @@ public sealed class IntervalsClient
         var cleanupDuplicateSignaturesAfter = 0;
         if (_options.CleanupPlanBeforeApply)
         {
-            var cleanupReport = await CleanupPlanEventsAsync(ordered, cancellationToken);
-            cleanupDeletedCount = cleanupReport.DeletedCount;
-            cleanupDuplicateSignaturesBefore = cleanupReport.DuplicateSignaturesBefore;
-            cleanupDuplicateSignaturesAfter = cleanupReport.DuplicateSignaturesAfter;
+            var cleanupResult = await CleanupAllMatchingPlannedEventsAsync(ordered, cancellationToken);
+            cleanupDeletedCount = cleanupResult.DeletedCount;
+            cleanupDuplicateSignaturesBefore = cleanupResult.DuplicateSignaturesBefore;
+            cleanupDuplicateSignaturesAfter = 0;
             if (!_options.JsonOutput)
             {
                 Console.WriteLine($"[CLEANUP] Removed {cleanupDeletedCount} existing events for plan '{_options.PlanName}' before apply-plan.");
@@ -561,12 +561,12 @@ public sealed class IntervalsClient
         {
             if (_options.CreatePlanOnMissing)
             {
-                var createdFolderId = await CreatePlanFolderAsync(cancellationToken);
-                payload["folder_id"] = createdFolderId;
+                var folderIdToUse = await FindPlanFolderIdByNameAsync(cancellationToken) ?? await CreatePlanFolderAsync(cancellationToken);
+                payload["folder_id"] = folderIdToUse;
 
                 if (!_options.JsonOutput)
                 {
-                    Console.WriteLine($"[INFO] Created plan folder {createdFolderId}. Retrying apply-plan.");
+                    Console.WriteLine($"[INFO] Using plan folder {folderIdToUse}. Retrying apply-plan.");
                 }
 
                 using var retryContent = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
@@ -577,7 +577,7 @@ public sealed class IntervalsClient
                 {
                     if (!_options.JsonOutput)
                     {
-                        Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={createdFolderId}");
+                        Console.WriteLine($"[SYNCED apply-plan] start_date={startDate:yyyy-MM-dd} workouts={extraWorkouts.Count} folder_id={folderIdToUse}");
                     }
 
                     return new ApplyPlanResult
@@ -630,6 +630,45 @@ public sealed class IntervalsClient
         };
     }
 
+    private sealed class CleanupAllResult
+    {
+        public required int DeletedCount { get; init; }
+        public required int DuplicateSignaturesBefore { get; init; }
+    }
+
+    private async Task<CleanupAllResult> CleanupAllMatchingPlannedEventsAsync(
+        IReadOnlyCollection<IntervalsEvent> plannedEvents,
+        CancellationToken cancellationToken)
+    {
+        if (plannedEvents.Count == 0)
+        {
+            return new CleanupAllResult
+            {
+                DeletedCount = 0,
+                DuplicateSignaturesBefore = 0
+            };
+        }
+
+        var oldestDate = plannedEvents.MinBy(x => x.Date)!.Date;
+        var newestDate = plannedEvents.MaxBy(x => x.Date)!.Date;
+        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
+        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
+        var candidateEvents = await GetExistingEventsForPlannedSignaturesAsync(plannedEvents, cleanupOldestDate, cleanupNewestDate, cancellationToken);
+
+        var duplicateSignaturesBefore = candidateEvents
+            .GroupBy(x => x.Signature, StringComparer.OrdinalIgnoreCase)
+            .Count(group => group.Count() > 1);
+
+        var allCandidateIds = candidateEvents.Select(x => x.Id).Distinct().ToList();
+        var deletedCount = await DeleteEventsByIdAsync(allCandidateIds, cancellationToken);
+
+        return new CleanupAllResult
+        {
+            DeletedCount = deletedCount,
+            DuplicateSignaturesBefore = duplicateSignaturesBefore
+        };
+    }
+
     private async Task<int> CreatePlanFolderAsync(CancellationToken cancellationToken)
     {
         var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/folders";
@@ -657,6 +696,49 @@ public sealed class IntervalsClient
         }
 
         return id;
+    }
+
+    private async Task<int?> FindPlanFolderIdByNameAsync(CancellationToken cancellationToken)
+    {
+        var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/folders";
+        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException(
+                $"Lookup plan folder failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
+        }
+
+        using var doc = JsonDocument.Parse(responseBody);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("Folder lookup response is not an array.");
+        }
+
+        foreach (var item in doc.RootElement.EnumerateArray())
+        {
+            if (!item.TryGetProperty("type", out var typeElement)
+                || typeElement.ValueKind != JsonValueKind.String
+                || !string.Equals(typeElement.GetString(), "PLAN", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!item.TryGetProperty("name", out var nameElement)
+                || nameElement.ValueKind != JsonValueKind.String
+                || !string.Equals(nameElement.GetString(), _options.PlanName, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (item.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number && idElement.TryGetInt32(out var id))
+            {
+                return id;
+            }
+        }
+
+        return null;
     }
 
     private async Task<List<ExistingPlannedEvent>> GetExistingEventsForPlannedSignaturesAsync(

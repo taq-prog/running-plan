@@ -24,6 +24,7 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `sync --json` to emit machine-readable sync output for CI/automation
     - includes `CleanupDeletedCount` (number of events removed by `--cleanup-plan-before-apply`)
     - includes `CleanupDuplicateSignaturesBefore` and `CleanupDuplicateSignaturesAfter`
+      - in sync mode, pre-cleanup removes all matching planned signatures first, so `CleanupDuplicateSignaturesAfter` is expected to be `0` before apply-plan inserts the fresh set
   - `verify --json` to emit machine-readable verification output for CI/automation
   - `cleanup --json` to emit machine-readable cleanup output for CI/automation
     - includes `DuplicateSignaturesBefore` and `DuplicateSignaturesAfter`
