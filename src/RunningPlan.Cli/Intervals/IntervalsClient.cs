@@ -21,6 +21,8 @@ public sealed class IntervalsClient
     {
         public required bool Applied { get; init; }
         public required int CleanupDeletedCount { get; init; }
+        public required int CleanupDuplicateSignaturesBefore { get; init; }
+        public required int CleanupDuplicateSignaturesAfter { get; init; }
     }
 
     private sealed class ExistingPlannedEvent
@@ -44,6 +46,8 @@ public sealed class IntervalsClient
     {
         var syncedCount = 0;
         var cleanupDeletedCount = 0;
+        var cleanupDuplicateSignaturesBefore = 0;
+        var cleanupDuplicateSignaturesAfter = 0;
         VerificationReport? verificationReport = null;
         var usedApplyPlan = _options.UseApplyPlan;
 
@@ -51,6 +55,8 @@ public sealed class IntervalsClient
         {
             var applyPlanResult = await ApplyPlanAsync(events, cancellationToken);
             cleanupDeletedCount = applyPlanResult.CleanupDeletedCount;
+            cleanupDuplicateSignaturesBefore = applyPlanResult.CleanupDuplicateSignaturesBefore;
+            cleanupDuplicateSignaturesAfter = applyPlanResult.CleanupDuplicateSignaturesAfter;
 
             if (applyPlanResult.Applied)
             {
@@ -83,6 +89,8 @@ public sealed class IntervalsClient
             DryRun = _options.DryRun,
             ApplyPlan = usedApplyPlan,
             CleanupDeletedCount = cleanupDeletedCount,
+            CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
+            CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter,
             PlannedCount = events.Count,
             SyncedCount = syncedCount,
             VerificationAttempted = !_options.DryRun && _options.VerifyAfterSync,
@@ -460,7 +468,9 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = true,
-                CleanupDeletedCount = 0
+                CleanupDeletedCount = 0,
+                CleanupDuplicateSignaturesBefore = 0,
+                CleanupDuplicateSignaturesAfter = 0
             };
         }
 
@@ -521,14 +531,21 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = true,
-                CleanupDeletedCount = 0
+                CleanupDeletedCount = 0,
+                CleanupDuplicateSignaturesBefore = 0,
+                CleanupDuplicateSignaturesAfter = 0
             };
         }
 
         var cleanupDeletedCount = 0;
+        var cleanupDuplicateSignaturesBefore = 0;
+        var cleanupDuplicateSignaturesAfter = 0;
         if (_options.CleanupPlanBeforeApply)
         {
-            cleanupDeletedCount = await CleanupExistingPlanEventsAsync(ordered, cancellationToken);
+            var cleanupReport = await CleanupPlanEventsAsync(ordered, cancellationToken);
+            cleanupDeletedCount = cleanupReport.DeletedCount;
+            cleanupDuplicateSignaturesBefore = cleanupReport.DuplicateSignaturesBefore;
+            cleanupDuplicateSignaturesAfter = cleanupReport.DuplicateSignaturesAfter;
             if (!_options.JsonOutput)
             {
                 Console.WriteLine($"[CLEANUP] Removed {cleanupDeletedCount} existing events for plan '{_options.PlanName}' before apply-plan.");
@@ -566,7 +583,9 @@ public sealed class IntervalsClient
                     return new ApplyPlanResult
                     {
                         Applied = true,
-                        CleanupDeletedCount = cleanupDeletedCount
+                        CleanupDeletedCount = cleanupDeletedCount,
+                        CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
+                        CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
                     };
                 }
 
@@ -585,7 +604,9 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = false,
-                CleanupDeletedCount = cleanupDeletedCount
+                CleanupDeletedCount = cleanupDeletedCount,
+                CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
+                CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
             };
         }
 
@@ -603,7 +624,9 @@ public sealed class IntervalsClient
         return new ApplyPlanResult
         {
             Applied = true,
-            CleanupDeletedCount = cleanupDeletedCount
+            CleanupDeletedCount = cleanupDeletedCount,
+            CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
+            CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
         };
     }
 
@@ -726,22 +749,6 @@ public sealed class IntervalsClient
         }
 
         return document.RootElement.EnumerateArray().Select(x => x.Clone()).ToList();
-    }
-
-    private async Task<int> CleanupExistingPlanEventsAsync(IReadOnlyCollection<IntervalsEvent> plannedEvents, CancellationToken cancellationToken)
-    {
-        if (plannedEvents.Count == 0)
-        {
-            return 0;
-        }
-
-        var oldestDate = plannedEvents.MinBy(x => x.Date)!.Date;
-        var newestDate = plannedEvents.MaxBy(x => x.Date)!.Date;
-        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
-        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
-        var existingEvents = await GetExistingEventsForPlannedSignaturesAsync(plannedEvents, cleanupOldestDate, cleanupNewestDate, cancellationToken);
-        var eventIdsToDelete = existingEvents.Select(x => x.Id).Distinct().ToList();
-        return await DeleteEventsByIdAsync(eventIdsToDelete, cancellationToken);
     }
 
     private async Task<int> DeleteEventsByIdAsync(IReadOnlyCollection<long> eventIdsToDelete, CancellationToken cancellationToken)
