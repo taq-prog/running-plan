@@ -94,7 +94,7 @@ public static class PlanToIntervalsMapper
         var intensity = kind?.ToLowerInvariant() switch
         {
             "warmup" => " intensity=warmup",
-            "stride" or "tempo" => " intensity=active",
+            "stride" or "tempo" or "steady" or "moderate" or "marathon" => " intensity=active",
             "recovery" => " intensity=recovery",
             "cooldown" => " intensity=cooldown",
             _ => string.Empty
