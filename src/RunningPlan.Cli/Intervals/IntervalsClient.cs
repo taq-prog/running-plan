@@ -6,6 +6,8 @@ namespace RunningPlan.Cli.Intervals;
 
 public sealed class IntervalsClient
 {
+    private const int CleanupRangePaddingDays = 7;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -19,6 +21,13 @@ public sealed class IntervalsClient
     {
         public required bool Applied { get; init; }
         public required int CleanupDeletedCount { get; init; }
+    }
+
+    private sealed class ExistingPlannedEvent
+    {
+        public required long Id { get; init; }
+        public required string Signature { get; init; }
+        public required DateTimeOffset UpdatedAt { get; init; }
     }
 
     public IntervalsClient(HttpClient httpClient, IntervalsOptions options)
@@ -99,12 +108,25 @@ public sealed class IntervalsClient
 
         var oldestDate = events.MinBy(x => x.Date)!.Date;
         var newestDate = events.MaxBy(x => x.Date)!.Date;
-        var candidateIds = await GetPlanEventIdsInRangeAsync(oldestDate, newestDate, cancellationToken);
+        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
+        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
+        var candidateEvents = await GetExistingEventsForPlannedSignaturesAsync(events, cleanupOldestDate, cleanupNewestDate, cancellationToken);
+        var candidateIds = candidateEvents.Select(x => x.Id).Distinct().ToList();
         var deletedCount = 0;
 
         if (!_options.DryRun)
         {
-            deletedCount = await DeleteEventsByIdAsync(candidateIds, cancellationToken);
+            var idsToDelete = candidateEvents
+                .GroupBy(x => x.Signature, StringComparer.OrdinalIgnoreCase)
+                .SelectMany(group => group
+                    .OrderByDescending(x => x.UpdatedAt)
+                    .ThenByDescending(x => x.Id)
+                    .Skip(1)
+                    .Select(x => x.Id))
+                .Distinct()
+                .ToList();
+
+            deletedCount = await DeleteEventsByIdAsync(idsToDelete, cancellationToken);
         }
 
         return new CleanupReport
@@ -497,7 +519,7 @@ public sealed class IntervalsClient
         var cleanupDeletedCount = 0;
         if (_options.CleanupPlanBeforeApply)
         {
-            cleanupDeletedCount = await CleanupExistingPlanEventsAsync(startDate, endDate, cancellationToken);
+            cleanupDeletedCount = await CleanupExistingPlanEventsAsync(ordered, cancellationToken);
             if (!_options.JsonOutput)
             {
                 Console.WriteLine($"[CLEANUP] Removed {cleanupDeletedCount} existing events for plan '{_options.PlanName}' before apply-plan.");
@@ -605,13 +627,73 @@ public sealed class IntervalsClient
         return id;
     }
 
-    private async Task<int> CleanupExistingPlanEventsAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
+    private async Task<List<ExistingPlannedEvent>> GetExistingEventsForPlannedSignaturesAsync(
+        IReadOnlyCollection<IntervalsEvent> plannedEvents,
+        DateOnly oldestDate,
+        DateOnly newestDate,
+        CancellationToken cancellationToken)
     {
-        var eventIdsToDelete = await GetPlanEventIdsInRangeAsync(oldestDate, newestDate, cancellationToken);
-        return await DeleteEventsByIdAsync(eventIdsToDelete, cancellationToken);
+        var plannedSignatures = plannedEvents
+            .Select(x => BuildEventSignature(x.Date, x.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var existingEvents = await FetchEventsInRangeAsync(oldestDate, newestDate, cancellationToken);
+        var result = new List<ExistingPlannedEvent>();
+
+        foreach (var item in existingEvents)
+        {
+            if (!item.TryGetProperty("id", out var idElement) || idElement.ValueKind != JsonValueKind.Number || !idElement.TryGetInt64(out var id))
+            {
+                continue;
+            }
+
+            if (!item.TryGetProperty("start_date_local", out var startElement) || startElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            if (!TryParseEventDate(startElement.GetString(), out var eventDate))
+            {
+                continue;
+            }
+
+            if (!item.TryGetProperty("name", out var nameElement) || nameElement.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var eventName = nameElement.GetString();
+            if (string.IsNullOrWhiteSpace(eventName))
+            {
+                continue;
+            }
+
+            var signature = BuildEventSignature(eventDate, eventName);
+            if (!plannedSignatures.Contains(signature))
+            {
+                continue;
+            }
+
+            var updatedAt = DateTimeOffset.MinValue;
+            if (item.TryGetProperty("updated", out var updatedElement)
+                && updatedElement.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(updatedElement.GetString(), out var parsedUpdated))
+            {
+                updatedAt = parsedUpdated;
+            }
+
+            result.Add(new ExistingPlannedEvent
+            {
+                Id = id,
+                Signature = signature,
+                UpdatedAt = updatedAt
+            });
+        }
+
+        return result;
     }
 
-    private async Task<List<long>> GetPlanEventIdsInRangeAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
+    private async Task<List<JsonElement>> FetchEventsInRangeAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
     {
         var listEndpoint =
             $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
@@ -634,27 +716,23 @@ public sealed class IntervalsClient
             throw new InvalidOperationException("Cleanup preflight response is not an array of events.");
         }
 
-        var eventIdsToDelete = new List<long>();
-        foreach (var item in document.RootElement.EnumerateArray())
+        return document.RootElement.EnumerateArray().Select(x => x.Clone()).ToList();
+    }
+
+    private async Task<int> CleanupExistingPlanEventsAsync(IReadOnlyCollection<IntervalsEvent> plannedEvents, CancellationToken cancellationToken)
+    {
+        if (plannedEvents.Count == 0)
         {
-            if (!item.TryGetProperty("plan_name", out var planNameElement) || planNameElement.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            var planName = planNameElement.GetString();
-            if (!string.Equals(planName, _options.PlanName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (item.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.Number && idElement.TryGetInt64(out var eventId))
-            {
-                eventIdsToDelete.Add(eventId);
-            }
+            return 0;
         }
 
-        return eventIdsToDelete.Distinct().ToList();
+        var oldestDate = plannedEvents.MinBy(x => x.Date)!.Date;
+        var newestDate = plannedEvents.MaxBy(x => x.Date)!.Date;
+        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
+        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
+        var existingEvents = await GetExistingEventsForPlannedSignaturesAsync(plannedEvents, cleanupOldestDate, cleanupNewestDate, cancellationToken);
+        var eventIdsToDelete = existingEvents.Select(x => x.Id).Distinct().ToList();
+        return await DeleteEventsByIdAsync(eventIdsToDelete, cancellationToken);
     }
 
     private async Task<int> DeleteEventsByIdAsync(IReadOnlyCollection<long> eventIdsToDelete, CancellationToken cancellationToken)
