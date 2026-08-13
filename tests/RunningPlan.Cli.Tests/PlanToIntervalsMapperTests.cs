@@ -17,6 +17,7 @@ public sealed class PlanToIntervalsMapperTests
 
         Assert.Equal(new DateOnly(2026, 8, 11), firstWorkout.Date);
         Assert.Equal(new DateTime(2026, 8, 11, 4, 30, 0), firstWorkout.StartDateLocal);
+        Assert.Equal(DateTimeKind.Unspecified, firstWorkout.StartDateLocal.Kind);
     }
 
     [Fact]

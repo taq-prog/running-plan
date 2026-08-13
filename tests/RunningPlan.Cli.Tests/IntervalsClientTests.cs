@@ -286,7 +286,7 @@ public sealed class IntervalsClientTests
             {
                 return JsonResponse("[" +
                     "{\"id\":1,\"uid\":\"uid-1\",\"external_id\":\"external-1\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}," +
-                    "{\"id\":3,\"uid\":\"rp-w01-copy\",\"external_id\":\"running-plan:w01:copy\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}," +
+                    "{\"id\":3,\"uid\":\"rp-w01-copy\",\"external_id\":\"running-plan:w01:copy\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"plan_name\":\"Test Plan\",\"tags\":[\"running-plan\"]}," +
                     "{\"id\":2,\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\"}" +
                     "]");
             }
@@ -314,7 +314,25 @@ public sealed class IntervalsClientTests
         Assert.Contains(handler.Requests, x => x.Method == HttpMethod.Delete && x.Uri.EndsWith("/events/3", StringComparison.Ordinal));
     }
 
-    private static IntervalsClient CreateClient(StubHandler handler, IntervalsOptions options)
+    [Fact]
+    public async Task UpsertEventsAsync_PropagatesCancellation()
+    {
+        using var cancellationSource = new CancellationTokenSource();
+        cancellationSource.Cancel();
+        var handler = new CancellationHandler();
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            VerifyAfterSync = false
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.UpsertEventsAsync([CreateEvent()], cancellationSource.Token));
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    private static IntervalsClient CreateClient(HttpMessageHandler handler, IntervalsOptions options)
         => new(new HttpClient(handler), options);
 
     private static IntervalsEvent CreateEvent(string uid = "uid-1", string externalId = "external-1") => new()
@@ -346,6 +364,17 @@ public sealed class IntervalsClientTests
             var body = request.Content is null ? string.Empty : await request.Content.ReadAsStringAsync(cancellationToken);
             Requests.Add(new RecordedRequest(request.Method, request.RequestUri!.ToString(), body));
             return responder(request);
+        }
+    }
+
+    private sealed class CancellationHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            return Task.FromCanceled<HttpResponseMessage>(cancellationToken);
         }
     }
 

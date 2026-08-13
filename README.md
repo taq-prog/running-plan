@@ -203,7 +203,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - With `--apply-plan`, the CLI posts to `POST /api/v1/athlete/{id}/events/apply-plan` using one request containing `extra_workouts`.
 - Planned events are created with local start time from `--start-time-local` (default `00:00`).
 - If CLI flag is omitted, local start time comes from `meta.start_time_local` in plan YAML.
-- After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range.
+- After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range with a one-day diagnostic margin on each side.
 - Verification and cleanup request up to 1000 events and fail explicitly if the API returns the full page, preventing silent pagination truncation.
 - Verification mode depends on sync mode:
   - per-event sync: checks `external_id` (+ date consistency)
@@ -223,7 +223,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - `duration_sec` is additional seconds. `duration_min: 5` plus `duration_sec: 30` means 330 seconds; `duration_sec: 0` is allowed only with `duration_min`.
 - `start_time_local` is mapped into each event as `start_date_local`; `timezone` remains the plan's local-time metadata because Intervals receives the explicitly local timestamp and no UTC conversion is performed.
 - Apply-plan verification matches `uid` or `external_id` when available, otherwise uses a unique date/name/description identity. Duplicate planned events are never satisfied by one API event.
-- Cleanup deletes all events owned by the configured plan identity in the padded date/name range; standalone `cleanup` and `sync --cleanup-plan-before-apply` therefore have the same replace-plan semantics.
+- Cleanup deletes all events owned by the configured plan identity in the padded date/name range. Ownership requires an exact planned UID/external ID, or both the `running-plan` tag and matching `plan_name`; standalone `cleanup` and `sync --cleanup-plan-before-apply` therefore have the same replace-plan semantics.
 - `--cleanup-plan-before-apply` is destructive by design: it deletes all matching owned events before recreating the current set. If apply-plan then fails, individual-sync fallback is disabled to avoid partial recreation. Changing a workout `id` creates a new remote identity, so the old event may require an explicit cleanup.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.

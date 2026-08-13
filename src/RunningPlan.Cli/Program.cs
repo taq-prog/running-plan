@@ -14,6 +14,13 @@ if (args.Length < 2)
 
 var command = args[0].Trim().ToLowerInvariant();
 var planPath = args[1].Trim();
+using var cancellationSource = new CancellationTokenSource();
+Console.CancelKeyPress += (_, eventArgs) =>
+{
+    eventArgs.Cancel = true;
+    cancellationSource.Cancel();
+};
+var cancellationToken = cancellationSource.Token;
 
 try
 {
@@ -39,7 +46,7 @@ try
             using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, syncOptions);
-                var report = await intervalsClient.UpsertEventsAsync(mappedEvents, CancellationToken.None);
+                var report = await intervalsClient.UpsertEventsAsync(mappedEvents, cancellationToken);
 
                 if (syncOptions.JsonOutput)
                 {
@@ -70,7 +77,7 @@ try
             using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, verifyOptions);
-                var report = await intervalsClient.VerifyEventsAsync(verifyEvents, verifyOptions.UseApplyPlan, CancellationToken.None);
+                var report = await intervalsClient.VerifyEventsAsync(verifyEvents, verifyOptions.UseApplyPlan, cancellationToken);
 
                 if (verifyOptions.JsonOutput)
                 {
@@ -99,7 +106,7 @@ try
             using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, cleanupOptions);
-                var report = await intervalsClient.CleanupPlanEventsAsync(cleanupEvents, CancellationToken.None);
+                var report = await intervalsClient.CleanupPlanEventsAsync(cleanupEvents, cancellationToken);
 
                 if (cleanupOptions.JsonOutput)
                 {

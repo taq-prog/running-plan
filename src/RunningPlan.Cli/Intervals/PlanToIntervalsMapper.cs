@@ -20,12 +20,15 @@ public static class PlanToIntervalsMapper
                     Uid = $"rp-w{week.Number:D2}-{workout.Id}",
                     ExternalId = $"running-plan:w{week.Number:D2}:{workout.Id}",
                     Date = date,
+                    // Intentionally Unspecified: Intervals expects a local timestamp.
                     StartDateLocal = date.ToDateTime(startTimeLocal),
                     Name = workout.Name,
                     Description = description,
                     Type = workout.Type,
                     Category = workout.Category,
-                    DistanceMeters = workout.DistanceKm.HasValue ? decimal.ToInt32(workout.DistanceKm.Value * 1000) : null,
+                    DistanceMeters = workout.DistanceKm.HasValue
+                        ? decimal.ToInt32(decimal.Round(workout.DistanceKm.Value * 1000, 0, MidpointRounding.AwayFromZero))
+                        : null,
                     MovingTimeSeconds = ToMovingTimeSeconds(workout.DurationMin, workout.DurationSec),
                     Tags = workout.Tags
                 });

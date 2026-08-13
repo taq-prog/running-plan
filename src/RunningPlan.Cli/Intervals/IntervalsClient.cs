@@ -942,14 +942,14 @@ public sealed class IntervalsClient
 
     private static bool TryParseEventDate(string? value, out DateOnly date)
     {
-        if (DateOnly.TryParse(value, out date))
+        if (DateOnly.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out date))
         {
             return true;
         }
 
-        if (DateTime.TryParse(value, out var dateTime))
+        if (DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var dateTime))
         {
-            date = DateOnly.FromDateTime(dateTime);
+            date = DateOnly.FromDateTime(dateTime.DateTime);
             return true;
         }
 
@@ -970,9 +970,10 @@ public sealed class IntervalsClient
         const int maxAttempts = 4;
         for (var attempt = 1; ; attempt++)
         {
+            HttpResponseMessage? response = null;
             try
             {
-                var response = await send();
+                response = await send();
                 if (attempt >= maxAttempts || !IsTransient(response.StatusCode))
                 {
                     return response;
@@ -984,8 +985,30 @@ public sealed class IntervalsClient
             {
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1)), cancellationToken);
+            await Task.Delay(response is null
+                ? TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1))
+                : GetRetryDelay(response, attempt), cancellationToken);
         }
+    }
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
+    {
+        if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+            && response.Headers.RetryAfter is { } retryAfter)
+        {
+            if (retryAfter.Delta is { } delta)
+            {
+                return delta > TimeSpan.Zero ? delta : TimeSpan.FromMilliseconds(250);
+            }
+
+            if (retryAfter.Date is { } date)
+            {
+                var delay = date - DateTimeOffset.UtcNow;
+                return delay > TimeSpan.Zero ? delay : TimeSpan.FromMilliseconds(250);
+            }
+        }
+
+        return TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1));
     }
 
     private static bool IsTransient(System.Net.HttpStatusCode statusCode)
@@ -1025,18 +1048,6 @@ public sealed class IntervalsClient
         if (!hasRunningPlanTag)
         {
             return false;
-        }
-
-        var hasGeneratedUid = item.TryGetProperty("uid", out var generatedUidElement)
-            && generatedUidElement.ValueKind == JsonValueKind.String
-            && (generatedUidElement.GetString()?.StartsWith("rp-", StringComparison.OrdinalIgnoreCase) ?? false);
-        var hasGeneratedExternalId = item.TryGetProperty("external_id", out var generatedExternalIdElement)
-            && generatedExternalIdElement.ValueKind == JsonValueKind.String
-            && (generatedExternalIdElement.GetString()?.StartsWith("running-plan:", StringComparison.OrdinalIgnoreCase) ?? false);
-
-        if (hasGeneratedUid || hasGeneratedExternalId)
-        {
-            return true;
         }
 
         return item.TryGetProperty("plan_name", out var planNameElement)

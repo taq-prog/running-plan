@@ -155,7 +155,7 @@ public static class PlanLoader
         }
 
         var lastStep = workout.Steps[^1];
-        if (lastStep.DistanceKm is null)
+        if (lastStep is null || lastStep.DistanceKm is null)
         {
             results.Add(new ValidationResult($"Week {weekNumber} workout {workout.Id}: add a final distance step to account for the declared {workout.DistanceKm.Value} km after time-based steps."));
         }
@@ -167,6 +167,12 @@ public static class PlanLoader
         decimal totalDistanceKm = 0;
         foreach (var step in steps)
         {
+            if (step is null)
+            {
+                hasTimeBasedStep = true;
+                continue;
+            }
+
             if (step.DistanceKm.HasValue)
             {
                 totalDistanceKm += step.DistanceKm.Value * Math.Max(step.Repeats ?? 1, 1);
@@ -177,7 +183,7 @@ public static class PlanLoader
                 hasTimeBasedStep = true;
             }
 
-            if (step.Steps.Count > 0)
+            if (step.Steps is not null && step.Steps.Count > 0)
             {
                 totalDistanceKm += (step.Repeats ?? 1) * SumDistanceKm(step.Steps, out var nestedHasTimeBasedStep);
                 hasTimeBasedStep |= nestedHasTimeBasedStep;
