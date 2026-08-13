@@ -4,9 +4,10 @@ namespace RunningPlan.Cli.Intervals;
 
 public static class PlanToIntervalsMapper
 {
-    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan)
+    public static IReadOnlyList<IntervalsEvent> Map(TrainingPlan plan, string? startTimeLocalOverride = null)
     {
         var mapped = new List<IntervalsEvent>();
+        var startTimeLocal = ParseStartTime(startTimeLocalOverride ?? plan.Meta.StartTimeLocal);
 
         foreach (var week in plan.Weeks.OrderBy(x => x.Number))
         {
@@ -19,6 +20,7 @@ public static class PlanToIntervalsMapper
                     Uid = $"rp-w{week.Number:D2}-{workout.Id}",
                     ExternalId = $"running-plan:w{week.Number:D2}:{workout.Id}",
                     Date = date,
+                    StartDateLocal = date.ToDateTime(startTimeLocal),
                     Name = workout.Name,
                     Description = description,
                     Type = workout.Type,
@@ -32,6 +34,11 @@ public static class PlanToIntervalsMapper
 
         return mapped.OrderBy(x => x.Date).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private static TimeOnly ParseStartTime(string value)
+        => TimeOnly.TryParseExact(value, "HH:mm", out var parsed)
+            ? parsed
+            : throw new ArgumentException("Workout start time must be in HH:mm format.", nameof(value));
 
     private static DateOnly ComputeDate(DateOnly startDate, int weekNumber, WeekDay day)
     {

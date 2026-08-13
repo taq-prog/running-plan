@@ -29,7 +29,7 @@ try
             var syncPlan = PlanLoader.Load(planPath);
             var syncOptions = ParseSyncOptions(args, syncPlan.Meta.StartTimeLocal);
             jsonErrorOutput = syncOptions.JsonOutput;
-            var mappedEvents = PlanToIntervalsMapper.Map(syncPlan);
+            var mappedEvents = PlanToIntervalsMapper.Map(syncPlan, syncOptions.StartTimeLocal);
 
             if (!syncOptions.JsonOutput)
             {
@@ -60,7 +60,7 @@ try
             var verifyPlan = PlanLoader.Load(planPath);
             var verifyOptions = ParseSyncOptions(args, verifyPlan.Meta.StartTimeLocal);
             jsonErrorOutput = verifyOptions.JsonOutput;
-            var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan);
+            var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan, verifyOptions.StartTimeLocal);
 
             if (!verifyOptions.JsonOutput)
             {
@@ -94,7 +94,7 @@ try
             var cleanupPlan = PlanLoader.Load(planPath);
             var cleanupOptions = ParseSyncOptions(args, cleanupPlan.Meta.StartTimeLocal);
             jsonErrorOutput = cleanupOptions.JsonOutput;
-            var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan);
+            var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan, cleanupOptions.StartTimeLocal);
 
             using (var client = CreateHttpClient())
             {

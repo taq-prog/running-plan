@@ -30,8 +30,31 @@ public sealed class IntervalsClientTests
 
         using var json = JsonDocument.Parse(request.Body);
         Assert.Equal("uid-1", json.RootElement.GetProperty("uid").GetString());
+        Assert.Equal("2026-08-11T04:30:00", json.RootElement.GetProperty("start_date_local").GetString());
         Assert.Equal("running-plan", json.RootElement.GetProperty("tags")[0].GetString());
         Assert.Equal(5000, json.RootElement.GetProperty("distance").GetInt32());
+    }
+
+    [Fact]
+    public async Task UpsertEventsAsync_RetriesTransientResponse()
+    {
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+            calls++ == 0
+                ? JsonResponse("busy", HttpStatusCode.ServiceUnavailable)
+                : JsonResponse("{}"));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            VerifyAfterSync = false
+        });
+
+        var report = await client.UpsertEventsAsync([CreateEvent()], CancellationToken.None);
+
+        Assert.Equal(1, report.SyncedCount);
+        Assert.Equal(2, handler.Requests.Count);
     }
 
     [Fact]
@@ -99,6 +122,28 @@ public sealed class IntervalsClientTests
     }
 
     [Fact]
+    public async Task VerifyApplyPlan_DoesNotUseOneDuplicateSignatureForTwoExpectedEvents()
+    {
+        var handler = new StubHandler(_ => JsonResponse("[{\"start_date_local\":\"2026-08-11T04:30:00\",\"name\":\"Easy\",\"description\":\"- 5km\"}]"));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            PlanName = "Test Plan",
+            JsonOutput = true
+        });
+
+        var first = CreateEvent();
+        var second = CreateEvent("uid-2", "external-2");
+        var report = await client.VerifyEventsAsync([first, second], useApplyPlanVerification: true, CancellationToken.None);
+
+        Assert.Equal(2, report.ExpectedCount);
+        Assert.Equal(1, report.FoundCount);
+        Assert.Single(report.MissingExternalIds);
+    }
+
+    [Fact]
     public async Task Cleanup_DoesNotDeleteUnownedSameSignatureEvent()
     {
         var handler = new StubHandler(request =>
@@ -107,7 +152,7 @@ public sealed class IntervalsClientTests
             {
                 return JsonResponse("[" +
                     "{\"id\":1,\"uid\":\"uid-1\",\"external_id\":\"external-1\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}," +
-                    "{\"id\":3,\"uid\":\"uid-1-copy\",\"external_id\":\"external-1-copy\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}," +
+                    "{\"id\":3,\"uid\":\"rp-w01-copy\",\"external_id\":\"running-plan:w01:copy\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}," +
                     "{\"id\":2,\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\"}" +
                     "]");
             }
@@ -137,11 +182,12 @@ public sealed class IntervalsClientTests
     private static IntervalsClient CreateClient(StubHandler handler, IntervalsOptions options)
         => new(new HttpClient(handler), options);
 
-    private static IntervalsEvent CreateEvent() => new()
+    private static IntervalsEvent CreateEvent(string uid = "uid-1", string externalId = "external-1") => new()
     {
-        Uid = "uid-1",
-        ExternalId = "external-1",
+        Uid = uid,
+        ExternalId = externalId,
         Date = new DateOnly(2026, 8, 11),
+        StartDateLocal = new DateTime(2026, 8, 11, 4, 30, 0),
         Name = "Easy",
         Description = "- 5km",
         Type = "Run",

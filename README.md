@@ -217,6 +217,8 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - HR ranges are validated in runtime across workout targets, default targets, and zone profile with `min <= max`.
 - HR zones must be strictly ordered, `hrrc_min <= threshold <= max`, and required meta ranges cannot be omitted.
 - `moving_time` is sent only when explicitly declared on the workout (`duration_min` and/or `duration_sec`); step durations are descriptive and are not estimated into total workout time.
+- `start_time_local` is mapped into each event as `start_date_local`; `timezone` remains the plan's local-time metadata because Intervals receives the explicitly local timestamp and no UTC conversion is performed.
+- Apply-plan verification matches `uid` or `external_id` when available, otherwise uses a unique date/name/description identity. Duplicate planned events are never satisfied by one API event.
 - Cleanup only deletes events owned by the configured plan identity (`plan_name`, stable ids, or the `running-plan` tag), and removes duplicates while preserving the newest canonical event.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.

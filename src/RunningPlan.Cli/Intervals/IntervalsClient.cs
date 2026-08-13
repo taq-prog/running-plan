@@ -95,6 +95,8 @@ public sealed class IntervalsClient
             Success = true,
             DryRun = _options.DryRun,
             ApplyPlan = usedApplyPlan,
+            ApplyPlanRequested = _options.UseApplyPlan,
+            ApplyPlanFallback = _options.UseApplyPlan && !usedApplyPlan,
             CleanupDeletedCount = cleanupDeletedCount,
             CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
             CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter,
@@ -175,7 +177,7 @@ public sealed class IntervalsClient
             {
                 ["uid"] = plannedEvent.Uid,
                 ["external_id"] = plannedEvent.ExternalId,
-                ["start_date_local"] = FormatEventStartDate(plannedEvent.Date),
+                ["start_date_local"] = FormatEventStartDate(plannedEvent.StartDateLocal),
                 ["category"] = plannedEvent.Category,
                 ["type"] = plannedEvent.Type,
                 ["name"] = plannedEvent.Name,
@@ -209,7 +211,7 @@ public sealed class IntervalsClient
             }
 
             var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events?upsertOnUid=true";
-            using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+            using var response = await SendWithRetryAsync(() => _httpClient.PostAsync(endpoint, content, cancellationToken), cancellationToken);
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -254,11 +256,18 @@ public sealed class IntervalsClient
 
         var expectedDateByExternalId = events.ToDictionary(x => x.ExternalId, x => x.Date, StringComparer.OrdinalIgnoreCase);
         var externalIdByUid = events.ToDictionary(x => x.Uid, x => x.ExternalId, StringComparer.OrdinalIgnoreCase);
-        var expectedSignatureByExternalId = events.ToDictionary(x => x.ExternalId, x => BuildEventSignature(x.Date, x.Name), StringComparer.OrdinalIgnoreCase);
         var expectedIds = new HashSet<string>(expectedDateByExternalId.Keys, StringComparer.OrdinalIgnoreCase);
         var foundIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var dateMismatches = new List<string>();
-        var foundSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var expectedByIdentity = events.ToDictionary(x => x.ExternalId, x => x, StringComparer.OrdinalIgnoreCase);
+        var matchedExpectedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var fallbackCandidates = events
+            .GroupBy(x => BuildDetailedEventSignature(x.Date, x.Name, x.Description), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(x => x.Key, x => new Queue<IntervalsEvent>(x), StringComparer.OrdinalIgnoreCase);
+        var uniqueBasicCandidates = events
+            .GroupBy(x => BuildEventSignature(x.Date, x.Name), StringComparer.OrdinalIgnoreCase)
+            .Where(x => x.Count() == 1)
+            .ToDictionary(x => x.Key, x => x.Single(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in eventsInRange)
         {
@@ -296,7 +305,55 @@ public sealed class IntervalsClient
                     continue;
                 }
 
-                foundSignatures.Add(BuildEventSignature(actualDate, actualName));
+                string? applyMatchedExternalId = null;
+                if (item.TryGetProperty("external_id", out var applyExternalIdElement)
+                    && applyExternalIdElement.ValueKind == JsonValueKind.String
+                    && expectedIds.Contains(applyExternalIdElement.GetString() ?? string.Empty))
+                {
+                    applyMatchedExternalId = applyExternalIdElement.GetString();
+                }
+                else if (item.TryGetProperty("uid", out var applyUidElement)
+                    && applyUidElement.ValueKind == JsonValueKind.String)
+                {
+                    var uid = applyUidElement.GetString();
+                    applyMatchedExternalId = expectedByIdentity.Values
+                        .FirstOrDefault(x => string.Equals(x.Uid, uid, StringComparison.OrdinalIgnoreCase))?.ExternalId;
+                }
+
+                if (applyMatchedExternalId is null)
+                {
+                    var description = item.TryGetProperty("description", out var descriptionElement)
+                        && descriptionElement.ValueKind == JsonValueKind.String
+                        ? descriptionElement.GetString() ?? string.Empty
+                        : string.Empty;
+                    var detailedSignature = BuildDetailedEventSignature(actualDate, actualName, description);
+                    if (fallbackCandidates.TryGetValue(detailedSignature, out var candidates))
+                    {
+                        while (candidates.Count > 0 && matchedExpectedIds.Contains(candidates.Peek().ExternalId))
+                        {
+                            candidates.Dequeue();
+                        }
+
+                        applyMatchedExternalId = candidates.Count > 0 ? candidates.Dequeue().ExternalId : null;
+                    }
+
+                    if (applyMatchedExternalId is null
+                        && uniqueBasicCandidates.TryGetValue(BuildEventSignature(actualDate, actualName), out var uniqueCandidate)
+                        && !matchedExpectedIds.Contains(uniqueCandidate.ExternalId))
+                    {
+                        applyMatchedExternalId = uniqueCandidate.ExternalId;
+                    }
+                }
+
+                if (applyMatchedExternalId is not null)
+                {
+                    matchedExpectedIds.Add(applyMatchedExternalId);
+                    if (expectedDateByExternalId.TryGetValue(applyMatchedExternalId, out var expectedApplyDate)
+                        && actualDate != expectedApplyDate)
+                    {
+                        dateMismatches.Add($"{applyMatchedExternalId}: expected {expectedApplyDate:yyyy-MM-dd}, got {actualDate:yyyy-MM-dd}");
+                    }
+                }
                 continue;
             }
 
@@ -345,12 +402,11 @@ public sealed class IntervalsClient
 
         if (useApplyPlanVerification)
         {
-            missing = expectedSignatureByExternalId
-                .Where(pair => !foundSignatures.Contains(pair.Value))
-                .Select(pair => pair.Key)
+            missing = expectedIds
+                .Where(id => !matchedExpectedIds.Contains(id))
                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            foundCount = expectedIds.Count - missing.Count;
+            foundCount = matchedExpectedIds.Count;
         }
         else
         {
@@ -492,7 +548,7 @@ public sealed class IntervalsClient
 
         var payload = new Dictionary<string, object?>
         {
-            ["start_date_local"] = FormatEventStartDate(startDate),
+            ["start_date_local"] = FormatEventStartDate(ordered[0].StartDateLocal),
             ["folder_id"] = folderId,
             ["extra_workouts"] = extraWorkouts
         };
@@ -532,7 +588,7 @@ public sealed class IntervalsClient
 
         var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/apply-plan";
         var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        using var response = await SendWithRetryAsync(() => _httpClient.PostAsync(endpoint, content, cancellationToken), cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound && responseBody.Contains("Plan not found", StringComparison.OrdinalIgnoreCase))
@@ -548,7 +604,7 @@ public sealed class IntervalsClient
                 }
 
                 using var retryContent = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-                using var retryResponse = await _httpClient.PostAsync(endpoint, retryContent, cancellationToken);
+                using var retryResponse = await SendWithRetryAsync(() => _httpClient.PostAsync(endpoint, retryContent, cancellationToken), cancellationToken);
                 var retryBody = await retryResponse.Content.ReadAsStringAsync(cancellationToken);
 
                 if (retryResponse.IsSuccessStatusCode)
@@ -658,7 +714,7 @@ public sealed class IntervalsClient
         };
 
         using var content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+        using var response = await SendWithRetryAsync(() => _httpClient.PostAsync(endpoint, content, cancellationToken), cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -679,7 +735,7 @@ public sealed class IntervalsClient
     private async Task<int?> FindPlanFolderIdByNameAsync(CancellationToken cancellationToken)
     {
         var endpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/folders";
-        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+        using var response = await SendWithRetryAsync(() => _httpClient.GetAsync(endpoint, cancellationToken), cancellationToken);
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
         if (!response.IsSuccessStatusCode)
@@ -794,33 +850,65 @@ public sealed class IntervalsClient
 
     private async Task<List<JsonElement>> FetchEventsInRangeAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
     {
-        var endpoint =
-            $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
-            $"?oldest={oldestDate:yyyy-MM-dd}" +
-            $"&newest={newestDate:yyyy-MM-dd}" +
-            "&limit=1000";
+        const int pageSize = 1000;
+        const int maxPages = 100;
+        var events = new List<JsonElement>();
+        var seenPageKeys = new HashSet<string>(StringComparer.Ordinal);
 
-        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
+        for (var page = 0; page < maxPages; page++)
         {
-            throw new HttpRequestException(
-                $"Event query failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
+            var offset = page * pageSize;
+            var endpoint =
+                $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
+                $"?oldest={oldestDate:yyyy-MM-dd}" +
+                $"&newest={newestDate:yyyy-MM-dd}" +
+                $"&limit={pageSize}&offset={offset}";
+
+            using var response = await SendWithRetryAsync(() => _httpClient.GetAsync(endpoint, cancellationToken), cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException(
+                    $"Event query failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
+            }
+
+            using var document = JsonDocument.Parse(responseBody);
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException("Event query response is not an array of events.");
+            }
+
+            var pageItems = document.RootElement.EnumerateArray().Select(x => x.Clone()).ToList();
+            if (pageItems.Count == 0)
+            {
+                return events;
+            }
+
+            var pageKey = string.Join(",", pageItems.Take(3).Select(GetEventIdentity));
+            if (!seenPageKeys.Add(pageKey))
+            {
+                throw new InvalidOperationException("Event query returned a repeated page; the API may not support offset pagination.");
+            }
+
+            events.AddRange(pageItems);
+            if (pageItems.Count < pageSize)
+            {
+                return events;
+            }
         }
 
-        using var document = JsonDocument.Parse(responseBody);
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        throw new InvalidOperationException($"Event query exceeded the pagination safety limit of {maxPages} pages.");
+    }
+
+    private static string GetEventIdentity(JsonElement item)
+    {
+        if (item.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.Number)
         {
-            throw new InvalidOperationException("Event query response is not an array of events.");
+            return id.GetRawText();
         }
 
-        if (document.RootElement.GetArrayLength() >= 1000)
-        {
-            throw new InvalidOperationException("Event query reached the API limit of 1000 events; narrow the date range or add pagination support before retrying.");
-        }
-
-        return document.RootElement.EnumerateArray().Select(x => x.Clone()).ToList();
+        return item.GetRawText();
     }
 
     private async Task<int> DeleteEventsByIdAsync(IReadOnlyCollection<long> eventIdsToDelete, CancellationToken cancellationToken)
@@ -829,8 +917,9 @@ public sealed class IntervalsClient
         foreach (var eventId in eventIdsToDelete)
         {
             var deleteEndpoint = $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events/{eventId}";
-            using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, deleteEndpoint);
-            using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+            using var deleteResponse = await SendWithRetryAsync(
+                () => _httpClient.SendAsync(new HttpRequestMessage(HttpMethod.Delete, deleteEndpoint), cancellationToken),
+                cancellationToken);
             var deleteBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
 
             if (!deleteResponse.IsSuccessStatusCode)
@@ -845,8 +934,8 @@ public sealed class IntervalsClient
         return deleted;
     }
 
-    private string FormatEventStartDate(DateOnly date)
-        => $"{date:yyyy-MM-dd}T{_options.StartTimeLocal}:00";
+    private static string FormatEventStartDate(DateTime localDateTime)
+        => localDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
 
     private static bool TryParseEventDate(string? value, out DateOnly date)
     {
@@ -867,6 +956,39 @@ public sealed class IntervalsClient
 
     private static string BuildEventSignature(DateOnly date, string name)
         => $"{date:yyyy-MM-dd}|{name.Trim()}";
+
+    private static string BuildDetailedEventSignature(DateOnly date, string name, string description)
+        => $"{BuildEventSignature(date, name)}|{description.Trim()}";
+
+    private static async Task<HttpResponseMessage> SendWithRetryAsync(
+        Func<Task<HttpResponseMessage>> send,
+        CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var response = await send();
+                if (attempt >= maxAttempts || !IsTransient(response.StatusCode))
+                {
+                    return response;
+                }
+
+                response.Dispose();
+            }
+            catch (HttpRequestException) when (attempt < maxAttempts)
+            {
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(250 * Math.Pow(2, attempt - 1)), cancellationToken);
+        }
+    }
+
+    private static bool IsTransient(System.Net.HttpStatusCode statusCode)
+        => statusCode == System.Net.HttpStatusCode.RequestTimeout
+            || statusCode == System.Net.HttpStatusCode.TooManyRequests
+            || (int)statusCode >= 500;
 
     private static IReadOnlyList<string> BuildTags(IReadOnlyList<string> tags)
         => tags.Contains("running-plan", StringComparer.OrdinalIgnoreCase)
@@ -900,8 +1022,21 @@ public sealed class IntervalsClient
             return false;
         }
 
-        return tagsElement.EnumerateArray()
+        var hasRunningPlanTag = tagsElement.EnumerateArray()
             .Any(tag => tag.ValueKind == JsonValueKind.String
                 && string.Equals(tag.GetString(), "running-plan", StringComparison.OrdinalIgnoreCase));
+        if (!hasRunningPlanTag)
+        {
+            return false;
+        }
+
+        var hasGeneratedUid = item.TryGetProperty("uid", out var generatedUidElement)
+            && generatedUidElement.ValueKind == JsonValueKind.String
+            && (generatedUidElement.GetString()?.StartsWith("rp-", StringComparison.OrdinalIgnoreCase) ?? false);
+        var hasGeneratedExternalId = item.TryGetProperty("external_id", out var generatedExternalIdElement)
+            && generatedExternalIdElement.ValueKind == JsonValueKind.String
+            && (generatedExternalIdElement.GetString()?.StartsWith("running-plan:", StringComparison.OrdinalIgnoreCase) ?? false);
+
+        return hasGeneratedUid || hasGeneratedExternalId;
     }
 }

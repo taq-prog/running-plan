@@ -16,6 +16,19 @@ public sealed class PlanToIntervalsMapperTests
         var firstWorkout = Assert.Single(mapped, x => x.Uid == "rp-w01-w01-tu-easy");
 
         Assert.Equal(new DateOnly(2026, 8, 11), firstWorkout.Date);
+        Assert.Equal(new DateTime(2026, 8, 11, 4, 30, 0), firstWorkout.StartDateLocal);
+    }
+
+    [Fact]
+    public void Map_OverrideStartTimeChangesLocalDateTimeOnly()
+    {
+        var plan = PlanLoader.Load(TestPaths.PlanPath);
+
+        var mapped = PlanToIntervalsMapper.Map(plan, "05:15");
+        var workout = Assert.Single(mapped, x => x.Uid == "rp-w01-w01-tu-easy");
+
+        Assert.Equal(new DateOnly(2026, 8, 11), workout.Date);
+        Assert.Equal(new DateTime(2026, 8, 11, 5, 15, 0), workout.StartDateLocal);
     }
 
     [Fact]
