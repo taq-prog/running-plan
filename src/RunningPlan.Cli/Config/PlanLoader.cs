@@ -222,6 +222,11 @@ public static class PlanLoader
                 results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: duration_sec=0 is only valid together with duration_min."));
             }
 
+            if (step.DistanceKm.HasValue && (step.DurationMin.HasValue || step.DurationSec.HasValue))
+            {
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' cannot define both distance and duration."));
+            }
+
             if (step.Kind == WorkoutStepKind.Repeat)
             {
                 if (!step.Repeats.HasValue || step.Repeats.Value < 1)
@@ -251,6 +256,11 @@ public static class PlanLoader
 
     private static void ValidateMeta(PlanMeta meta, List<ValidationResult> results)
     {
+        if (meta.StartDate == default)
+        {
+            results.Add(new ValidationResult("meta.start_date is required and cannot be 0001-01-01."));
+        }
+
         if (!string.IsNullOrWhiteSpace(meta.TimeZone))
         {
             try

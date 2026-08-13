@@ -126,6 +126,13 @@ $defs:
       - required: [duration_min]
       - required: [duration_sec]
       - required: [steps]
+    allOf:
+      - if:
+          properties:
+            duration_sec:
+              const: 0
+        then:
+          required: [duration_min]
   step:
     type: object
     required: [kind]
@@ -156,6 +163,16 @@ $defs:
         items:
           $ref: "#/$defs/step"
     allOf:
+      - not:
+          required: [distance_km, duration_min]
+      - not:
+          required: [distance_km, duration_sec]
+      - if:
+          properties:
+            duration_sec:
+              const: 0
+        then:
+          required: [duration_min]
       - if:
           properties:
             kind:

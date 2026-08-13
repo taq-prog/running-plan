@@ -20,6 +20,7 @@ public sealed class IntervalsClient
     private sealed class ApplyPlanResult
     {
         public required bool Applied { get; init; }
+        public required bool DestructiveCleanupPerformed { get; init; }
         public required int CleanupDeletedCount { get; init; }
         public required int CleanupDuplicateSignaturesBefore { get; init; }
         public required int CleanupDuplicateSignaturesAfter { get; init; }
@@ -71,6 +72,11 @@ public sealed class IntervalsClient
             }
             else
             {
+                if (applyPlanResult.DestructiveCleanupPerformed)
+                {
+                    throw new InvalidOperationException("apply-plan was unavailable after destructive cleanup; individual sync fallback is disabled to avoid partial plan recreation.");
+                }
+
                 // ponytail: fallback keeps user flow working when apply-plan is unavailable for the account/folder.
                 usedApplyPlan = false;
                 syncedCount = await SyncEventsIndividuallyAsync(events, cancellationToken);
@@ -139,15 +145,7 @@ public sealed class IntervalsClient
 
         if (!_options.DryRun)
         {
-            var idsToDelete = candidateEvents
-                .GroupBy(x => x.Signature, StringComparer.OrdinalIgnoreCase)
-                .SelectMany(group => group
-                    .OrderByDescending(x => x.UpdatedAt)
-                    .ThenByDescending(x => x.Id)
-                    .Skip(1)
-                    .Select(x => x.Id))
-                .Distinct()
-                .ToList();
+            var idsToDelete = candidateEvents.Select(x => x.Id).Distinct().ToList();
 
             deletedCount = await DeleteEventsByIdAsync(idsToDelete, cancellationToken);
             duplicateSignaturesAfter = 0;
@@ -507,6 +505,7 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = true,
+                DestructiveCleanupPerformed = false,
                 CleanupDeletedCount = 0,
                 CleanupDuplicateSignaturesBefore = 0,
                 CleanupDuplicateSignaturesAfter = 0
@@ -565,6 +564,7 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = true,
+                DestructiveCleanupPerformed = false,
                 CleanupDeletedCount = 0,
                 CleanupDuplicateSignaturesBefore = 0,
                 CleanupDuplicateSignaturesAfter = 0
@@ -617,6 +617,7 @@ public sealed class IntervalsClient
                     return new ApplyPlanResult
                     {
                         Applied = true,
+                        DestructiveCleanupPerformed = cleanupDeletedCount > 0,
                         CleanupDeletedCount = cleanupDeletedCount,
                         CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
                         CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
@@ -638,6 +639,7 @@ public sealed class IntervalsClient
             return new ApplyPlanResult
             {
                 Applied = false,
+                DestructiveCleanupPerformed = cleanupDeletedCount > 0,
                 CleanupDeletedCount = cleanupDeletedCount,
                 CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
                 CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
@@ -658,6 +660,7 @@ public sealed class IntervalsClient
         return new ApplyPlanResult
         {
             Applied = true,
+            DestructiveCleanupPerformed = cleanupDeletedCount > 0,
             CleanupDeletedCount = cleanupDeletedCount,
             CleanupDuplicateSignaturesBefore = cleanupDuplicateSignaturesBefore,
             CleanupDuplicateSignaturesAfter = cleanupDuplicateSignaturesAfter
@@ -997,12 +1000,6 @@ public sealed class IntervalsClient
 
     private static bool IsOwnedByPlan(JsonElement item, string expectedPlanName, HashSet<string> plannedUids, HashSet<string> plannedExternalIds)
     {
-        if (item.TryGetProperty("plan_name", out var planNameElement)
-            && planNameElement.ValueKind == JsonValueKind.String)
-        {
-            return string.Equals(planNameElement.GetString(), expectedPlanName, StringComparison.OrdinalIgnoreCase);
-        }
-
         if (item.TryGetProperty("uid", out var uidElement)
             && uidElement.ValueKind == JsonValueKind.String
             && plannedUids.Contains(uidElement.GetString() ?? string.Empty))
@@ -1037,6 +1034,13 @@ public sealed class IntervalsClient
             && generatedExternalIdElement.ValueKind == JsonValueKind.String
             && (generatedExternalIdElement.GetString()?.StartsWith("running-plan:", StringComparison.OrdinalIgnoreCase) ?? false);
 
-        return hasGeneratedUid || hasGeneratedExternalId;
+        if (hasGeneratedUid || hasGeneratedExternalId)
+        {
+            return true;
+        }
+
+        return item.TryGetProperty("plan_name", out var planNameElement)
+            && planNameElement.ValueKind == JsonValueKind.String
+            && string.Equals(planNameElement.GetString(), expectedPlanName, StringComparison.OrdinalIgnoreCase);
     }
 }

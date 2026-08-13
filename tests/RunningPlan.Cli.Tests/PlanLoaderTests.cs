@@ -208,6 +208,29 @@ weeks:
   }
 
   [Fact]
+  public void Load_RejectsMissingStartDate()
+  {
+    var yaml = File.ReadAllText(TestPaths.PlanPath).Replace("  start_date: 2026-08-11\n", string.Empty, StringComparison.Ordinal);
+
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("meta.start_date is required", error.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Load_RejectsStepWithDistanceAndDuration()
+  {
+    var yaml = File.ReadAllText(TestPaths.PlanPath).Replace(
+      "          - kind: easy\n            distance_km: 4\n            target_hr:",
+      "          - kind: easy\n            distance_km: 4\n            duration_min: 30\n            target_hr:",
+      StringComparison.Ordinal);
+
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("cannot define both distance and duration", error.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Load_RejectsExplicitNullWeeks()
   {
     var yaml = """

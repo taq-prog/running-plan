@@ -214,6 +214,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - `distance_km` is the total workout distance; `steps` describe how to execute the workout and may include time-based segments.
 - `distance_km` supports fractional kilometers such as `0.2`, `0.4`, and `1.5`; values are converted to meters for the API.
 - Workouts with time-based steps must include a final distance step when needed to reach their declared distance; the plan loader validates this invariant.
+- Each step uses one metric: `distance_km` or duration (`duration_min`/`duration_sec`), not distance and duration together.
 - Warmup, active, recovery, and cooldown steps include matching `intensity` annotations where configured.
 - YAML is strict: unknown keys are treated as errors so typos (for example `target_hrr`) fail fast.
 - HR ranges are validated in runtime across workout targets, default targets, and zone profile with `min <= max`.
@@ -222,7 +223,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - `duration_sec` is additional seconds. `duration_min: 5` plus `duration_sec: 30` means 330 seconds; `duration_sec: 0` is allowed only with `duration_min`.
 - `start_time_local` is mapped into each event as `start_date_local`; `timezone` remains the plan's local-time metadata because Intervals receives the explicitly local timestamp and no UTC conversion is performed.
 - Apply-plan verification matches `uid` or `external_id` when available, otherwise uses a unique date/name/description identity. Duplicate planned events are never satisfied by one API event.
-- Cleanup only deletes events owned by the configured plan identity (`plan_name`, stable ids, or the `running-plan` tag), and removes duplicates while preserving the newest canonical event.
-- `--cleanup-plan-before-apply` is destructive by design: it deletes all matching events owned by this plan in the padded date/name range before recreating the current set. Changing a workout `id` creates a new remote identity, so the old event may require an explicit cleanup.
+- Cleanup deletes all events owned by the configured plan identity in the padded date/name range; standalone `cleanup` and `sync --cleanup-plan-before-apply` therefore have the same replace-plan semantics.
+- `--cleanup-plan-before-apply` is destructive by design: it deletes all matching owned events before recreating the current set. If apply-plan then fails, individual-sync fallback is disabled to avoid partial recreation. Changing a workout `id` creates a new remote identity, so the old event may require an explicit cleanup.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.

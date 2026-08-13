@@ -137,6 +137,44 @@ public sealed class IntervalsClientTests
     }
 
     [Fact]
+    public async Task ApplyPlanFailureAfterDestructiveCleanup_StopsWithoutFallback()
+    {
+        var handler = new StubHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return JsonResponse("[{\"id\":1,\"uid\":\"uid-1\",\"external_id\":\"external-1\",\"name\":\"Easy\",\"start_date_local\":\"2026-08-11\",\"tags\":[\"running-plan\"]}]");
+            }
+
+            if (request.Method == HttpMethod.Delete)
+            {
+                return JsonResponse("{}");
+            }
+
+            if (request.RequestUri!.AbsolutePath.EndsWith("/events/apply-plan", StringComparison.Ordinal))
+            {
+                return JsonResponse("Plan not found", HttpStatusCode.NotFound);
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method} {request.RequestUri}");
+        });
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            UseApplyPlan = true,
+            CleanupPlanBeforeApply = true,
+            VerifyAfterSync = false
+        });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => client.UpsertEventsAsync([CreateEvent()], CancellationToken.None));
+
+        Assert.Contains("destructive cleanup", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(handler.Requests, x => x.Uri.EndsWith("/events?upsertOnUid=true", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task UpsertEventsAsync_DoesNotRetryBadRequest()
     {
         var handler = new StubHandler(_ => JsonResponse("bad request", HttpStatusCode.BadRequest));
@@ -270,9 +308,10 @@ public sealed class IntervalsClientTests
 
         var report = await client.CleanupPlanEventsAsync([CreateEvent()], CancellationToken.None);
 
-        Assert.Equal(1, report.DeletedCount);
-        var delete = Assert.Single(handler.Requests, x => x.Method == HttpMethod.Delete);
-        Assert.EndsWith("/events/1", delete.Uri, StringComparison.Ordinal);
+        Assert.Equal(2, report.DeletedCount);
+        Assert.Equal(2, handler.Requests.Count(x => x.Method == HttpMethod.Delete));
+        Assert.Contains(handler.Requests, x => x.Method == HttpMethod.Delete && x.Uri.EndsWith("/events/1", StringComparison.Ordinal));
+        Assert.Contains(handler.Requests, x => x.Method == HttpMethod.Delete && x.Uri.EndsWith("/events/3", StringComparison.Ordinal));
     }
 
     private static IntervalsClient CreateClient(StubHandler handler, IntervalsOptions options)
