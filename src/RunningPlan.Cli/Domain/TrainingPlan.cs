@@ -5,8 +5,7 @@ namespace RunningPlan.Cli.Domain;
 
 public sealed class TrainingPlan
 {
-    [Required]
-    public PlanMeta Meta { get; init; } = new();
+    public PlanMeta Meta { get; init; } = null!;
 
     [Required]
     [MinLength(1)]
@@ -25,43 +24,49 @@ public sealed class PlanMeta
 
     [Required]
     [YamlMember(Alias = "timezone")]
-    public string TimeZone { get; init; } = "Europe/Moscow";
+    public string TimeZone { get; init; } = string.Empty;
 
     [YamlMember(Alias = "start_time_local")]
     [RegularExpression("^([01]\\d|2[0-3]):[0-5]\\d$")]
     public string StartTimeLocal { get; init; } = "00:00";
 
     [YamlMember(Alias = "default_targets")]
-    public DefaultTargets DefaultTargets { get; init; } = new();
+    public DefaultTargets DefaultTargets { get; init; } = null!;
 
     [YamlMember(Alias = "hr_profile")]
-    public HeartRateProfile HrProfile { get; init; } = new();
+    public HeartRateProfile HrProfile { get; init; } = null!;
 }
 
 public sealed class DefaultTargets
 {
-    public HeartRateRange EasyHr { get; init; } = new() { Min = 125, Max = 145 };
-    public HeartRateRange SteadyHr { get; init; } = new() { Min = 145, Max = 160 };
-    public HeartRateRange TempoHr { get; init; } = new() { Min = 165, Max = 175 };
+    public HeartRateRange EasyHr { get; init; } = null!;
+    public HeartRateRange SteadyHr { get; init; } = null!;
+    public HeartRateRange TempoHr { get; init; } = null!;
 }
 
 public sealed class HeartRateProfile
 {
-    public int Threshold { get; init; } = 181;
-    public int Max { get; init; } = 199;
-    public int HrrcMin { get; init; } = 181;
-    public HeartRateZones Zones { get; init; } = new();
+    [Range(50, 230)]
+    public int Threshold { get; init; }
+
+    [Range(50, 230)]
+    public int Max { get; init; }
+
+    [Range(50, 230)]
+    public int HrrcMin { get; init; }
+
+    public HeartRateZones Zones { get; init; } = null!;
 }
 
 public sealed class HeartRateZones
 {
-    public HeartRateRange Z1 { get; init; } = new() { Min = 0, Max = 152 };
-    public HeartRateRange Z2 { get; init; } = new() { Min = 153, Max = 161 };
-    public HeartRateRange Z3 { get; init; } = new() { Min = 162, Max = 170 };
-    public HeartRateRange Z4 { get; init; } = new() { Min = 171, Max = 180 };
-    public HeartRateRange Z5 { get; init; } = new() { Min = 181, Max = 185 };
-    public HeartRateRange Z6 { get; init; } = new() { Min = 186, Max = 190 };
-    public HeartRateRange Z7 { get; init; } = new() { Min = 191, Max = 199 };
+    public HeartRateRange Z1 { get; init; } = null!;
+    public HeartRateRange Z2 { get; init; } = null!;
+    public HeartRateRange Z3 { get; init; } = null!;
+    public HeartRateRange Z4 { get; init; } = null!;
+    public HeartRateRange Z5 { get; init; } = null!;
+    public HeartRateRange Z6 { get; init; } = null!;
+    public HeartRateRange Z7 { get; init; } = null!;
 }
 
 public sealed class TrainingWeek
@@ -85,13 +90,13 @@ public sealed class PlannedWorkout
     public string Name { get; init; } = string.Empty;
 
     [Required]
-    public WeekDay Day { get; init; }
+    public WeekDay? Day { get; init; }
 
     [Required]
-    public string Type { get; init; } = "Run";
+    public string Type { get; init; } = string.Empty;
 
     [Required]
-    public string Category { get; init; } = "WORKOUT";
+    public string Category { get; init; } = string.Empty;
 
     [Range(1, int.MaxValue)]
     public int? DistanceKm { get; init; }

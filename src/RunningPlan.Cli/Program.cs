@@ -20,6 +20,7 @@ try
     switch (command)
     {
         case "validate":
+            EnsureNoOptions(args);
             var validatePlan = PlanLoader.Load(planPath);
             Console.WriteLine($"OK: plan is valid ({validatePlan.Weeks.Count} weeks).\nPath: {Path.GetFullPath(planPath)}");
             return 0;
@@ -35,7 +36,7 @@ try
                 PrintPreview(mappedEvents);
             }
 
-            using (var client = new HttpClient())
+            using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, syncOptions);
                 var report = await intervalsClient.UpsertEventsAsync(mappedEvents, CancellationToken.None);
@@ -66,7 +67,7 @@ try
                 PrintPreview(verifyEvents);
             }
 
-            using (var client = new HttpClient())
+            using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, verifyOptions);
                 var report = await intervalsClient.VerifyEventsAsync(verifyEvents, verifyOptions.UseApplyPlan, CancellationToken.None);
@@ -95,7 +96,7 @@ try
             jsonErrorOutput = cleanupOptions.JsonOutput;
             var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan);
 
-            using (var client = new HttpClient())
+            using (var client = CreateHttpClient())
             {
                 var intervalsClient = new IntervalsClient(client, cleanupOptions);
                 var report = await intervalsClient.CleanupPlanEventsAsync(cleanupEvents, CancellationToken.None);
@@ -161,6 +162,12 @@ static void PrintPreview(IReadOnlyList<IntervalsEvent> events)
     Console.WriteLine();
 }
 
+static HttpClient CreateHttpClient()
+    => new()
+    {
+        Timeout = TimeSpan.FromSeconds(30)
+    };
+
 static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? planStartTimeLocal)
 {
     var options = ParseOptions(args);
@@ -183,7 +190,7 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
     var folderIdRaw = GetOption(options, "folder-id");
     var folderId = 0;
 
-    if (!string.IsNullOrWhiteSpace(folderIdRaw) && !int.TryParse(folderIdRaw, out folderId))
+    if (!string.IsNullOrWhiteSpace(folderIdRaw) && (!int.TryParse(folderIdRaw, out folderId) || folderId < 0))
     {
         throw new ArgumentException("--folder-id must be an integer.");
     }
@@ -222,6 +229,14 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
 
 static Dictionary<string, string?> ParseOptions(IReadOnlyList<string> args)
 {
+    var valueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "athlete-id", "api-key", "base-url", "folder-id", "start-time-local", "plan-name"
+    };
+    var flagOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "dry-run", "apply-plan", "create-plan-on-missing", "cleanup-plan-before-apply", "no-verify", "json"
+    };
     var options = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
     for (var i = 2; i < args.Count; i++)
@@ -229,22 +244,40 @@ static Dictionary<string, string?> ParseOptions(IReadOnlyList<string> args)
         var token = args[i];
         if (!token.StartsWith("--", StringComparison.Ordinal))
         {
-            continue;
+            throw new ArgumentException($"Unexpected argument: {token}");
         }
 
         var key = token[2..];
-        if (i + 1 < args.Count && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
+        if (!valueOptions.Contains(key) && !flagOptions.Contains(key))
         {
-            options[key] = args[i + 1];
-            i++;
+            throw new ArgumentException($"Unknown option: --{key}");
         }
-        else
+
+        if (!options.TryAdd(key, null))
         {
-            options[key] = null;
+            throw new ArgumentException($"Option specified more than once: --{key}");
+        }
+
+        if (valueOptions.Contains(key))
+        {
+            if (i + 1 >= args.Count || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                throw new ArgumentException($"Option --{key} requires a value.");
+            }
+
+            options[key] = args[++i];
         }
     }
 
     return options;
+}
+
+static void EnsureNoOptions(IReadOnlyList<string> args)
+{
+    if (args.Count > 2)
+    {
+        throw new ArgumentException($"Unexpected argument: {args[2]}");
+    }
 }
 
 static string? GetOption(IReadOnlyDictionary<string, string?> options, string key)

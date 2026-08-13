@@ -180,7 +180,7 @@ public sealed class IntervalsClient
                 ["type"] = plannedEvent.Type,
                 ["name"] = plannedEvent.Name,
                 ["description"] = plannedEvent.Description,
-                ["tags"] = plannedEvent.Tags
+                ["tags"] = BuildTags(plannedEvent.Tags)
             };
 
             if (plannedEvent.DistanceMeters.HasValue)
@@ -250,26 +250,7 @@ public sealed class IntervalsClient
         var minDate = events.MinBy(x => x.Date)!.Date;
         var maxDate = events.MaxBy(x => x.Date)!.Date;
 
-        var endpoint =
-            $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
-            $"?oldest={minDate:yyyy-MM-dd}" +
-            $"&newest={maxDate:yyyy-MM-dd}" +
-            "&limit=1000";
-
-        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new HttpRequestException(
-                $"Verification failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
-        }
-
-        using var document = JsonDocument.Parse(responseBody);
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
-        {
-            throw new InvalidOperationException("Verification response is not an array of events.");
-        }
+        var eventsInRange = await FetchEventsInRangeAsync(minDate, maxDate, cancellationToken);
 
         var expectedDateByExternalId = events.ToDictionary(x => x.ExternalId, x => x.Date, StringComparer.OrdinalIgnoreCase);
         var externalIdByUid = events.ToDictionary(x => x.Uid, x => x.ExternalId, StringComparer.OrdinalIgnoreCase);
@@ -279,7 +260,7 @@ public sealed class IntervalsClient
         var dateMismatches = new List<string>();
         var foundSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var item in document.RootElement.EnumerateArray())
+        foreach (var item in eventsInRange)
         {
             if (useApplyPlanVerification)
             {
@@ -430,7 +411,7 @@ public sealed class IntervalsClient
     private async Task<VerificationReport> VerifyWithRetriesAsync(IReadOnlyCollection<IntervalsEvent> events, bool useApplyPlanVerification, CancellationToken cancellationToken)
     {
         const int maxAttempts = 4;
-        const int delayMs = 1500;
+        var retryDelays = new[] { 500, 1000, 2000 };
 
         VerificationReport? lastReport = null;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -448,7 +429,7 @@ public sealed class IntervalsClient
                     Console.WriteLine($"[VERIFY] attempt {attempt}/{maxAttempts} not ready yet, retrying...");
                 }
 
-                await Task.Delay(delayMs, cancellationToken);
+                await Task.Delay(retryDelays[attempt - 1], cancellationToken);
             }
         }
 
@@ -490,7 +471,7 @@ public sealed class IntervalsClient
                 ["type"] = evt.Type,
                 ["day"] = evt.Date.DayNumber - startDate.DayNumber,
                 ["days"] = 1,
-                ["tags"] = evt.Tags,
+                ["tags"] = BuildTags(evt.Tags),
                 ["external_id"] = evt.ExternalId
             };
 
@@ -747,6 +728,8 @@ public sealed class IntervalsClient
         var plannedSignatures = plannedEvents
             .Select(x => BuildEventSignature(x.Date, x.Name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var plannedUids = plannedEvents.Select(x => x.Uid).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var plannedExternalIds = plannedEvents.Select(x => x.ExternalId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var existingEvents = await FetchEventsInRangeAsync(oldestDate, newestDate, cancellationToken);
         var result = new List<ExistingPlannedEvent>();
@@ -785,6 +768,11 @@ public sealed class IntervalsClient
                 continue;
             }
 
+            if (!IsOwnedByPlan(item, _options.PlanName, plannedUids, plannedExternalIds))
+            {
+                continue;
+            }
+
             var updatedAt = DateTimeOffset.MinValue;
             if (item.TryGetProperty("updated", out var updatedElement)
                 && updatedElement.ValueKind == JsonValueKind.String
@@ -806,25 +794,30 @@ public sealed class IntervalsClient
 
     private async Task<List<JsonElement>> FetchEventsInRangeAsync(DateOnly oldestDate, DateOnly newestDate, CancellationToken cancellationToken)
     {
-        var listEndpoint =
+        var endpoint =
             $"{_baseUrl}api/v1/athlete/{_options.AthleteId}/events" +
             $"?oldest={oldestDate:yyyy-MM-dd}" +
             $"&newest={newestDate:yyyy-MM-dd}" +
             "&limit=1000";
 
-        using var listResponse = await _httpClient.GetAsync(listEndpoint, cancellationToken);
-        var listBody = await listResponse.Content.ReadAsStringAsync(cancellationToken);
+        using var response = await _httpClient.GetAsync(endpoint, cancellationToken);
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
 
-        if (!listResponse.IsSuccessStatusCode)
+        if (!response.IsSuccessStatusCode)
         {
             throw new HttpRequestException(
-                $"Cleanup preflight failed ({(int)listResponse.StatusCode} {listResponse.StatusCode}): {listBody}");
+                $"Event query failed ({(int)response.StatusCode} {response.StatusCode}): {responseBody}");
         }
 
-        using var document = JsonDocument.Parse(listBody);
+        using var document = JsonDocument.Parse(responseBody);
         if (document.RootElement.ValueKind != JsonValueKind.Array)
         {
-            throw new InvalidOperationException("Cleanup preflight response is not an array of events.");
+            throw new InvalidOperationException("Event query response is not an array of events.");
+        }
+
+        if (document.RootElement.GetArrayLength() >= 1000)
+        {
+            throw new InvalidOperationException("Event query reached the API limit of 1000 events; narrow the date range or add pagination support before retrying.");
         }
 
         return document.RootElement.EnumerateArray().Select(x => x.Clone()).ToList();
@@ -874,4 +867,41 @@ public sealed class IntervalsClient
 
     private static string BuildEventSignature(DateOnly date, string name)
         => $"{date:yyyy-MM-dd}|{name.Trim()}";
+
+    private static IReadOnlyList<string> BuildTags(IReadOnlyList<string> tags)
+        => tags.Contains("running-plan", StringComparer.OrdinalIgnoreCase)
+            ? tags
+            : ["running-plan", .. tags];
+
+    private static bool IsOwnedByPlan(JsonElement item, string expectedPlanName, HashSet<string> plannedUids, HashSet<string> plannedExternalIds)
+    {
+        if (item.TryGetProperty("plan_name", out var planNameElement)
+            && planNameElement.ValueKind == JsonValueKind.String)
+        {
+            return string.Equals(planNameElement.GetString(), expectedPlanName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (item.TryGetProperty("uid", out var uidElement)
+            && uidElement.ValueKind == JsonValueKind.String
+            && plannedUids.Contains(uidElement.GetString() ?? string.Empty))
+        {
+            return true;
+        }
+
+        if (item.TryGetProperty("external_id", out var externalIdElement)
+            && externalIdElement.ValueKind == JsonValueKind.String
+            && plannedExternalIds.Contains(externalIdElement.GetString() ?? string.Empty))
+        {
+            return true;
+        }
+
+        if (!item.TryGetProperty("tags", out var tagsElement) || tagsElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return tagsElement.EnumerateArray()
+            .Any(tag => tag.ValueKind == JsonValueKind.String
+                && string.Equals(tag.GetString(), "running-plan", StringComparison.OrdinalIgnoreCase));
+    }
 }

@@ -1,4 +1,3 @@
-using System.Text;
 using RunningPlan.Cli.Domain;
 
 namespace RunningPlan.Cli.Intervals;
@@ -13,8 +12,8 @@ public static class PlanToIntervalsMapper
         {
             foreach (var workout in week.Workouts)
             {
-                var date = ComputeDate(plan.Meta.StartDate, week.Number, workout.Day);
-                var description = BuildDescription(workout);
+                var date = ComputeDate(plan.Meta.StartDate, week.Number, workout.Day!.Value);
+                var description = WorkoutDescriptionBuilder.Build(workout);
                 mapped.Add(new IntervalsEvent
                 {
                     Uid = $"rp-w{week.Number:D2}-{workout.Id}",
@@ -51,55 +50,6 @@ public static class PlanToIntervalsMapper
 
         var offset = ((int)requestedDay - (int)baseDate.DayOfWeek + 7) % 7;
         return baseDate.AddDays(offset);
-    }
-
-    private static string BuildDescription(PlannedWorkout workout)
-    {
-        var sb = new StringBuilder();
-        if (workout.Steps.Count == 0)
-        {
-            AppendBuilderStep(sb, workout.DistanceKm, workout.DurationMin, workout.DurationSec, workout.TargetHr, null, null);
-            return sb.ToString().TrimEnd();
-        }
-
-        AppendBuilderSteps(sb, workout.Steps);
-        return sb.ToString().TrimEnd();
-    }
-
-    private static void AppendBuilderSteps(StringBuilder sb, IReadOnlyList<WorkoutStep> steps)
-    {
-        foreach (var step in steps)
-        {
-            if (step.Kind == WorkoutStepKind.Repeat)
-            {
-                sb.AppendLine($"{step.Repeats}x");
-                AppendBuilderSteps(sb, step.Steps);
-                sb.AppendLine();
-                continue;
-            }
-
-            AppendBuilderStep(sb, step.DistanceKm, step.DurationMin, step.DurationSec, step.TargetHr, step.Note, step.Kind);
-        }
-    }
-
-    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, WorkoutStepKind? kind)
-    {
-        var measurement = distanceKm.HasValue
-            ? $"{distanceKm.Value}km"
-            : durationSec.HasValue
-                ? $"{durationSec.Value}s"
-                : $"{durationMin ?? 0}m";
-        var targetText = target is null ? string.Empty : $" {target.Min}-{target.Max} HR";
-        var cue = string.IsNullOrWhiteSpace(note) ? string.Empty : $"{note.Trim()} ";
-        var intensity = kind switch
-        {
-            WorkoutStepKind.Warmup => " intensity=warmup",
-            WorkoutStepKind.Stride or WorkoutStepKind.Tempo or WorkoutStepKind.Steady or WorkoutStepKind.Moderate or WorkoutStepKind.Marathon => " intensity=active",
-            WorkoutStepKind.Recovery => " intensity=recovery",
-            WorkoutStepKind.Cooldown => " intensity=cooldown",
-            _ => string.Empty
-        };
-        sb.AppendLine($"- {cue}{measurement}{targetText}{intensity}");
     }
 
     private static int? ToMovingTimeSeconds(int? durationMin, int? durationSec)

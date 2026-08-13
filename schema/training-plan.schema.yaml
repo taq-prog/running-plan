@@ -9,7 +9,7 @@ additionalProperties: false
 properties:
   meta:
     type: object
-    required: [name, start_date, timezone]
+    required: [name, start_date, timezone, default_targets, hr_profile]
     additionalProperties: false
     properties:
       name:
@@ -26,6 +26,7 @@ properties:
         pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
       default_targets:
         type: object
+        required: [easy_hr, steady_hr, tempo_hr]
         additionalProperties: false
         properties:
           easy_hr: { $ref: "#/$defs/hrRange" }

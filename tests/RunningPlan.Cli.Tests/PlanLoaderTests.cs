@@ -6,19 +6,20 @@ namespace RunningPlan.Cli.Tests;
 
 public sealed class PlanLoaderTests
 {
-    [Fact]
-    public void Load_ValidPlan_Succeeds()
-    {
-        var plan = PlanLoader.Load(TestPaths.PlanPath);
+  [Fact]
+  public void Load_ValidPlan_Succeeds()
+  {
+    var plan = PlanLoader.Load(TestPaths.PlanPath);
 
-        Assert.Equal(12, plan.Weeks.Count);
-        Assert.Equal(36, plan.Weeks.SelectMany(x => x.Workouts).Count());
-    }
+    Assert.Equal(12, plan.Weeks.Count);
+    Assert.Equal(36, plan.Weeks.SelectMany(x => x.Workouts).Count());
+    Assert.Equal(Enumerable.Range(1, 12), plan.Weeks.Select(x => x.Number));
+  }
 
-    [Fact]
-    public void Load_RejectsUnknownYamlProperty()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsUnknownYamlProperty()
+  {
+    var yaml = """
 meta:
   name: "Unknown key"
   start_date: 2026-08-11
@@ -37,17 +38,17 @@ weeks:
           max: 145
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.ThrowsAny<Exception>(() => PlanLoader.Load(path));
+    var error = Assert.ThrowsAny<Exception>(() => PlanLoader.Load(path));
 
-        Assert.Contains("target_hrr", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    Assert.Contains("target_hrr", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
 
-    [Fact]
-    public void Load_RejectsInvertedHeartRateRanges()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsInvertedHeartRateRanges()
+  {
+    var yaml = """
 meta:
   name: "Bad HR"
   start_date: 2026-08-11
@@ -80,19 +81,19 @@ weeks:
         target_hr: { min: 175, max: 160 }
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
 
-        Assert.Contains("Meta default_targets.easy_hr", error.Message, StringComparison.Ordinal);
-        Assert.Contains("Meta hr_profile.zones.z7", error.Message, StringComparison.Ordinal);
-        Assert.Contains("workout HR", error.Message, StringComparison.Ordinal);
-    }
+    Assert.Contains("Meta default_targets.easy_hr", error.Message, StringComparison.Ordinal);
+    Assert.Contains("Meta hr_profile.zones.z7", error.Message, StringComparison.Ordinal);
+    Assert.Contains("workout HR", error.Message, StringComparison.Ordinal);
+  }
 
-    [Fact]
-    public void Load_RejectsWorkoutWithoutMetrics()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsWorkoutWithoutMetrics()
+  {
+    var yaml = """
 meta:
   name: "Bad workout"
   start_date: 2026-08-11
@@ -107,17 +108,17 @@ weeks:
         category: WORKOUT
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
 
-        Assert.Contains("must define distance_km, duration_min, duration_sec, or steps", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    Assert.Contains("must define distance_km, duration_min, duration_sec, or steps", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
 
-    [Fact]
-    public void Load_RejectsNonRepeatStepWithRepeats()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsNonRepeatStepWithRepeats()
+  {
+    var yaml = """
 meta:
   name: "Bad step"
   start_date: 2026-08-11
@@ -137,17 +138,69 @@ weeks:
             distance_km: 4
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
 
-        Assert.Contains("repeats is only allowed for repeat steps", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    Assert.Contains("repeats is only allowed for repeat steps", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
 
-    [Fact]
-    public void Load_RejectsStructuredDistanceThatExceedsDeclaredDistance()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsMissingRequiredMetaConfiguration()
+  {
+    var yaml = """
+meta:
+  name: "Missing config"
+  start_date: 2026-08-11
+  timezone: "Asia/Almaty"
+weeks:
+  - number: 1
+    workouts:
+      - id: w01-tu-easy
+        name: "W01 Tue Easy"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+""";
+
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("meta.default_targets is required", error.Message, StringComparison.Ordinal);
+    Assert.Contains("meta.hr_profile is required", error.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Load_RejectsInvalidWorkoutStepKind()
+  {
+    var yaml = """
+meta:
+  name: "Invalid step"
+  start_date: 2026-08-11
+  timezone: "Asia/Almaty"
+weeks:
+  - number: 1
+    workouts:
+      - id: w01-tu-easy
+        name: "W01 Tue Easy"
+        day: Tuesday
+        type: Run
+        category: WORKOUT
+        distance_km: 4
+        steps:
+          - kind: sprint-ish
+            distance_km: 1
+""";
+
+    var error = Assert.ThrowsAny<Exception>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("Could not parse training plan YAML", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
+
+  [Fact]
+  public void Load_RejectsStructuredDistanceThatExceedsDeclaredDistance()
+  {
+    var yaml = """
 meta:
   name: "Distance overflow"
   start_date: 2026-08-11
@@ -168,18 +221,18 @@ weeks:
             distance_km: 3
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
 
-        Assert.Contains("structured distance", error.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("exceeds declared distance", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    Assert.Contains("structured distance", error.Message, StringComparison.OrdinalIgnoreCase);
+    Assert.Contains("exceeds declared distance", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
 
-    [Fact]
-    public void Load_RejectsTimeBasedWorkoutWithoutFinalDistanceStep()
-    {
-        var yaml = """
+  [Fact]
+  public void Load_RejectsTimeBasedWorkoutWithoutFinalDistanceStep()
+  {
+    var yaml = """
 meta:
   name: "Time based without final distance"
   start_date: 2026-08-11
@@ -207,17 +260,17 @@ weeks:
             duration_min: 8
 """;
 
-        var path = WriteTempYaml(yaml);
+    var path = WriteTempYaml(yaml);
 
-        var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(path));
 
-        Assert.Contains("add a final distance step", error.Message, StringComparison.OrdinalIgnoreCase);
-    }
+    Assert.Contains("add a final distance step", error.Message, StringComparison.OrdinalIgnoreCase);
+  }
 
-    private static string WriteTempYaml(string content)
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"running-plan-test-{Guid.NewGuid():N}.yaml");
-        File.WriteAllText(path, content);
-        return path;
-    }
+  private static string WriteTempYaml(string content)
+  {
+    var path = Path.Combine(Path.GetTempPath(), $"running-plan-test-{Guid.NewGuid():N}.yaml");
+    File.WriteAllText(path, content);
+    return path;
+  }
 }

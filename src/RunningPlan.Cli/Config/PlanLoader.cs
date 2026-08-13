@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using RunningPlan.Cli.Domain;
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -20,8 +21,20 @@ public static class PlanLoader
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
             .Build();
 
-        var plan = deserializer.Deserialize<TrainingPlan>(yaml)
-            ?? throw new InvalidOperationException("Could not parse training plan YAML.");
+        TrainingPlan? plan;
+        try
+        {
+            plan = deserializer.Deserialize<TrainingPlan>(yaml);
+        }
+        catch (YamlException exception)
+        {
+            throw new InvalidOperationException($"Could not parse training plan YAML: {exception.Message}", exception);
+        }
+
+        if (plan is null)
+        {
+            throw new InvalidOperationException("Could not parse training plan YAML.");
+        }
 
         Validate(plan);
 
@@ -33,8 +46,15 @@ public static class PlanLoader
         var results = new List<ValidationResult>();
         var context = new ValidationContext(plan);
         Validator.TryValidateObject(plan, context, results, validateAllProperties: true);
-        Validator.TryValidateObject(plan.Meta, new ValidationContext(plan.Meta), results, validateAllProperties: true);
-        ValidateMetaHeartRateRanges(plan.Meta, results);
+        if (plan.Meta is null)
+        {
+            results.Add(new ValidationResult("meta is required."));
+        }
+        else
+        {
+            Validator.TryValidateObject(plan.Meta, new ValidationContext(plan.Meta), results, validateAllProperties: true);
+            ValidateMeta(plan.Meta, results);
+        }
 
         var weekNumbers = new HashSet<int>();
         foreach (var week in plan.Weeks)
@@ -61,10 +81,11 @@ public static class PlanLoader
                 }
 
                 ValidateHrRange($"Week {week.Number} workout {workout.Id}: workout HR", workout.TargetHr, results);
+                ValidateHrMaximum($"Week {week.Number} workout {workout.Id}: workout HR", workout.TargetHr, plan.Meta?.HrProfile?.Max, results);
 
                 ValidateWorkoutDistance(week.Number, workout, results);
 
-                ValidateStepTree(week.Number, workout.Id, workout.Steps, results);
+                ValidateStepTree(week.Number, workout.Id, workout.Steps, plan.Meta?.HrProfile?.Max, results);
             }
         }
 
@@ -127,7 +148,7 @@ public static class PlanLoader
         return totalDistanceKm;
     }
 
-    private static void ValidateStepTree(int weekNumber, string workoutId, IReadOnlyCollection<WorkoutStep> steps, List<ValidationResult> results)
+    private static void ValidateStepTree(int weekNumber, string workoutId, IReadOnlyCollection<WorkoutStep> steps, int? profileMaximum, List<ValidationResult> results)
     {
         foreach (var step in steps)
         {
@@ -163,27 +184,76 @@ public static class PlanLoader
             }
 
             ValidateHrRange($"Week {weekNumber} workout {workoutId}: step HR", step.TargetHr, results);
+            ValidateHrMaximum($"Week {weekNumber} workout {workoutId}: step HR", step.TargetHr, profileMaximum, results);
 
             if (step.Steps.Count > 0)
             {
-                ValidateStepTree(weekNumber, workoutId, step.Steps, results);
+                ValidateStepTree(weekNumber, workoutId, step.Steps, profileMaximum, results);
             }
         }
     }
 
-    private static void ValidateMetaHeartRateRanges(PlanMeta meta, List<ValidationResult> results)
+    private static void ValidateMeta(PlanMeta meta, List<ValidationResult> results)
     {
-        ValidateHrRange("Meta default_targets.easy_hr", meta.DefaultTargets.EasyHr, results);
-        ValidateHrRange("Meta default_targets.steady_hr", meta.DefaultTargets.SteadyHr, results);
-        ValidateHrRange("Meta default_targets.tempo_hr", meta.DefaultTargets.TempoHr, results);
+        if (meta.DefaultTargets is null)
+        {
+            results.Add(new ValidationResult("meta.default_targets is required."));
+        }
+        else
+        {
+            Validator.TryValidateObject(meta.DefaultTargets, new ValidationContext(meta.DefaultTargets), results, true);
+            ValidateRequiredHrRange("Meta default_targets.easy_hr", meta.DefaultTargets.EasyHr, results);
+            ValidateRequiredHrRange("Meta default_targets.steady_hr", meta.DefaultTargets.SteadyHr, results);
+            ValidateRequiredHrRange("Meta default_targets.tempo_hr", meta.DefaultTargets.TempoHr, results);
+        }
 
-        ValidateHrRange("Meta hr_profile.zones.z1", meta.HrProfile.Zones.Z1, results);
-        ValidateHrRange("Meta hr_profile.zones.z2", meta.HrProfile.Zones.Z2, results);
-        ValidateHrRange("Meta hr_profile.zones.z3", meta.HrProfile.Zones.Z3, results);
-        ValidateHrRange("Meta hr_profile.zones.z4", meta.HrProfile.Zones.Z4, results);
-        ValidateHrRange("Meta hr_profile.zones.z5", meta.HrProfile.Zones.Z5, results);
-        ValidateHrRange("Meta hr_profile.zones.z6", meta.HrProfile.Zones.Z6, results);
-        ValidateHrRange("Meta hr_profile.zones.z7", meta.HrProfile.Zones.Z7, results);
+        if (meta.HrProfile is null)
+        {
+            results.Add(new ValidationResult("meta.hr_profile is required."));
+            return;
+        }
+
+        Validator.TryValidateObject(meta.HrProfile, new ValidationContext(meta.HrProfile), results, true);
+        if (meta.HrProfile.Zones is null)
+        {
+            results.Add(new ValidationResult("meta.hr_profile.zones is required."));
+            return;
+        }
+
+        ValidateHeartRateProfile(meta.HrProfile, results);
+        ValidateHrMaximum("Meta default_targets.easy_hr", meta.DefaultTargets?.EasyHr, meta.HrProfile.Max, results);
+        ValidateHrMaximum("Meta default_targets.steady_hr", meta.DefaultTargets?.SteadyHr, meta.HrProfile.Max, results);
+        ValidateHrMaximum("Meta default_targets.tempo_hr", meta.DefaultTargets?.TempoHr, meta.HrProfile.Max, results);
+    }
+
+    private static void ValidateHeartRateProfile(HeartRateProfile profile, List<ValidationResult> results)
+    {
+        ValidateRequiredHrRange("Meta hr_profile.zones.z1", profile.Zones.Z1, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z2", profile.Zones.Z2, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z3", profile.Zones.Z3, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z4", profile.Zones.Z4, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z5", profile.Zones.Z5, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z6", profile.Zones.Z6, results);
+        ValidateRequiredHrRange("Meta hr_profile.zones.z7", profile.Zones.Z7, results);
+
+        var zones = new[] { profile.Zones.Z1, profile.Zones.Z2, profile.Zones.Z3, profile.Zones.Z4, profile.Zones.Z5, profile.Zones.Z6, profile.Zones.Z7 };
+        for (var index = 1; index < zones.Length; index++)
+        {
+            if (zones[index - 1] is not null && zones[index] is not null && zones[index - 1].Max >= zones[index].Min)
+            {
+                results.Add(new ValidationResult($"Meta hr_profile zones must be strictly ordered: z{index}.max must be below z{index + 1}.min."));
+            }
+        }
+
+        if (profile.HrrcMin > profile.Threshold)
+        {
+            results.Add(new ValidationResult("Meta hr_profile.hrrc_min cannot be above threshold."));
+        }
+
+        if (profile.Threshold > profile.Max)
+        {
+            results.Add(new ValidationResult("Meta hr_profile.threshold cannot be above max."));
+        }
     }
 
     private static void ValidateHrRange(string scope, HeartRateRange? range, List<ValidationResult> results)
@@ -196,6 +266,25 @@ public static class PlanLoader
         if (range.Min > range.Max)
         {
             results.Add(new ValidationResult($"{scope}: min cannot be above max."));
+        }
+    }
+
+    private static void ValidateRequiredHrRange(string scope, HeartRateRange? range, List<ValidationResult> results)
+    {
+        if (range is null)
+        {
+            results.Add(new ValidationResult($"{scope} is required."));
+            return;
+        }
+
+        ValidateHrRange(scope, range, results);
+    }
+
+    private static void ValidateHrMaximum(string scope, HeartRateRange? range, int? maximum, List<ValidationResult> results)
+    {
+        if (range is not null && maximum.HasValue && range.Max > maximum.Value)
+        {
+            results.Add(new ValidationResult($"{scope}: max cannot be above hr_profile.max ({maximum.Value})."));
         }
     }
 }

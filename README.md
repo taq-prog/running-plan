@@ -36,6 +36,24 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
 - `plans/plan-12-weeks.yaml`
 - `schema/training-plan.schema.yaml`
 
+## Architecture
+
+```text
+plan.yaml -> PlanLoader/validation -> TrainingPlan
+          |
+          v
+    PlanToIntervalsMapper
+       |                 |
+       v                 v
+     IntervalsEvent   WorkoutDescriptionBuilder
+       |                 |
+       +---------> IntervalsClient -> Intervals.icu
+```
+
+The C# loader and validator are the runtime source of truth. The YAML schema mirrors
+that contract for editor/tooling use; CI always validates the real plan through the
+loader as well as build and tests.
+
 ## Intervals API auth
 
 According to Intervals API docs (`/api-docs.html`), HTTP Basic auth is supported.
@@ -185,6 +203,7 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - Planned events are created with local start time from `--start-time-local` (default `00:00`).
 - If CLI flag is omitted, local start time comes from `meta.start_time_local` in plan YAML.
 - After non-dry sync, the CLI verifies uploaded workouts using `GET /api/v1/athlete/{id}/events` across the plan date range.
+- Verification and cleanup request up to 1000 events and fail explicitly if the API returns the full page, preventing silent pagination truncation.
 - Verification mode depends on sync mode:
   - per-event sync: checks `external_id` (+ date consistency)
   - apply-plan sync: checks by `date + name` (and `plan_name` when provided), because some accounts return `external_id = null` for apply-plan-created events
@@ -196,5 +215,8 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - Warmup, active, recovery, and cooldown steps include matching `intensity` annotations where configured.
 - YAML is strict: unknown keys are treated as errors so typos (for example `target_hrr`) fail fast.
 - HR ranges are validated in runtime across workout targets, default targets, and zone profile with `min <= max`.
+- HR zones must be strictly ordered, `hrrc_min <= threshold <= max`, and required meta ranges cannot be omitted.
+- `moving_time` is sent only when explicitly declared on the workout (`duration_min` and/or `duration_sec`); step durations are descriptive and are not estimated into total workout time.
+- Cleanup only deletes events owned by the configured plan identity (`plan_name`, stable ids, or the `running-plan` tag), and removes duplicates while preserving the newest canonical event.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.
