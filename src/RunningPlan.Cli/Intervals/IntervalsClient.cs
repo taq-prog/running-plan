@@ -821,13 +821,14 @@ public sealed class IntervalsClient
                 continue;
             }
 
-            var signature = BuildEventSignature(eventDate, eventName);
-            if (!plannedSignatures.Contains(signature))
+            var hasStrongIdentity = HasStrongPlanIdentity(item, plannedUids, plannedExternalIds);
+            if (!hasStrongIdentity && !IsOwnedByPlan(item, _options.PlanName, plannedUids, plannedExternalIds))
             {
                 continue;
             }
 
-            if (!IsOwnedByPlan(item, _options.PlanName, plannedUids, plannedExternalIds))
+            var signature = BuildEventSignature(eventDate, eventName);
+            if (!hasStrongIdentity && !plannedSignatures.Contains(signature))
             {
                 continue;
             }
@@ -1023,16 +1024,7 @@ public sealed class IntervalsClient
 
     private static bool IsOwnedByPlan(JsonElement item, string expectedPlanName, HashSet<string> plannedUids, HashSet<string> plannedExternalIds)
     {
-        if (item.TryGetProperty("uid", out var uidElement)
-            && uidElement.ValueKind == JsonValueKind.String
-            && plannedUids.Contains(uidElement.GetString() ?? string.Empty))
-        {
-            return true;
-        }
-
-        if (item.TryGetProperty("external_id", out var externalIdElement)
-            && externalIdElement.ValueKind == JsonValueKind.String
-            && plannedExternalIds.Contains(externalIdElement.GetString() ?? string.Empty))
+        if (HasStrongPlanIdentity(item, plannedUids, plannedExternalIds))
         {
             return true;
         }
@@ -1054,4 +1046,12 @@ public sealed class IntervalsClient
             && planNameElement.ValueKind == JsonValueKind.String
             && string.Equals(planNameElement.GetString(), expectedPlanName, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool HasStrongPlanIdentity(JsonElement item, HashSet<string> plannedUids, HashSet<string> plannedExternalIds)
+        => (item.TryGetProperty("uid", out var uidElement)
+            && uidElement.ValueKind == JsonValueKind.String
+            && plannedUids.Contains(uidElement.GetString() ?? string.Empty))
+        || (item.TryGetProperty("external_id", out var externalIdElement)
+            && externalIdElement.ValueKind == JsonValueKind.String
+            && plannedExternalIds.Contains(externalIdElement.GetString() ?? string.Empty));
 }

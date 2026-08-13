@@ -4,7 +4,7 @@ using RunningPlan.Cli.Intervals;
 
 LoadDotEnv();
 
-var jsonErrorOutput = false;
+var jsonErrorOutput = args.Contains("--json", StringComparer.OrdinalIgnoreCase);
 
 if (args.Length < 2)
 {
