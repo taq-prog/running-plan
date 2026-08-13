@@ -12,6 +12,8 @@ public sealed class IntervalsOptions
     public bool CreatePlanOnMissing { get; init; }
     public string PlanName { get; init; } = "Running Plan Auto";
     public bool CleanupPlanBeforeApply { get; init; }
+    public int CleanupRangeDays { get; init; } = 7;
+    public bool ConfirmDestructiveCleanup { get; init; }
     public bool VerifyAfterSync { get; init; } = true;
     public bool JsonOutput { get; init; }
 }

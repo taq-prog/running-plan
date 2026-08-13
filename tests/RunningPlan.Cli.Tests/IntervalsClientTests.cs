@@ -335,6 +335,26 @@ public sealed class IntervalsClientTests
     }
 
     [Fact]
+    public async Task Cleanup_UsesConfiguredRangeForMovedEvents()
+    {
+        var handler = new StubHandler(request => request.Method == HttpMethod.Get
+            ? JsonResponse("[{\"id\":10,\"uid\":\"uid-1\",\"external_id\":\"external-1\",\"name\":\"Old Name\",\"start_date_local\":\"2026-08-01\"}]")
+            : JsonResponse("{}"));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            CleanupRangeDays = 12
+        });
+
+        var report = await client.CleanupPlanEventsAsync([CreateEvent()], CancellationToken.None);
+
+        Assert.Equal(1, report.DeletedCount);
+        Assert.Contains(handler.Requests, x => x.Method == HttpMethod.Delete && x.Uri.EndsWith("/events/10", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task UpsertEventsAsync_PropagatesCancellation()
     {
         using var cancellationSource = new CancellationTokenSource();

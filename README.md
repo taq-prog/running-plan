@@ -13,13 +13,13 @@ This project converts a 12-week running plan in YAML into Intervals.icu calendar
   - `validate` to verify plan structure
   - `sync` to push workouts to Intervals.icu
   - `verify` to check that planned workouts exist in Intervals.icu calendar
-  - `cleanup` to remove already-uploaded plan events in the plan date range by `plan_name`
+  - `cleanup` to remove already-uploaded plan events in the plan date range by `plan_name` (requires `--yes` unless `--dry-run`)
   - `sync --dry-run` to preview payloads without sending
   - `sync --apply-plan` to upload the full block via `events/apply-plan`
   - `sync --create-plan-on-missing` to create a plan and retry apply-plan on `404 Plan not found`
   - `sync --plan-name` to control the auto-created plan name
   - `sync --start-time-local` to set planned workout local start time (default `00:00`)
-  - `sync --cleanup-plan-before-apply` to delete matching planned events before sync (both apply-plan and per-event modes)
+  - `sync --cleanup-plan-before-apply` to delete matching planned events before sync (requires `--yes`)
   - `sync --no-verify` to skip post-sync verification call
   - `sync --json` to emit machine-readable sync output for CI/automation
     - includes `CleanupDeletedCount` (number of events removed by `--cleanup-plan-before-apply`)
@@ -96,6 +96,7 @@ meta:
 
 - `meta.start_time_local` is used by default for `sync` and `cleanup`.
 - `--start-time-local HH:mm` overrides YAML for a specific run.
+- `--cleanup-range-days N` controls how far around the plan dates cleanup searches for moved events (default `7`).
 - `start_time_local` is interpreted in the IANA timezone from `meta.timezone`; the resulting local timestamp is sent to Intervals without UTC conversion.
 
 ## Sync (preview only)
@@ -176,6 +177,12 @@ dotnet run --project src/RunningPlan.Cli -- cleanup plans/plan-12-weeks.yaml \
   --athlete-id YOUR_ATHLETE_ID \
   --api-key YOUR_API_KEY \
   --plan-name "My 12-week running plan"
+
+# execute destructive cleanup explicitly
+dotnet run --project src/RunningPlan.Cli -- cleanup plans/plan-12-weeks.yaml \
+  --athlete-id YOUR_ATHLETE_ID \
+  --api-key YOUR_API_KEY \
+  --yes
 ```
 
 You can also use env vars:
@@ -225,5 +232,6 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - Apply-plan verification matches `uid` or `external_id` when available, otherwise uses a unique date/name/description identity. Duplicate planned events are never satisfied by one API event.
 - Cleanup deletes all events owned by the configured plan identity in the padded date/name range. Ownership requires an exact planned UID/external ID, or both the `running-plan` tag and matching `plan_name`; standalone `cleanup` and `sync --cleanup-plan-before-apply` therefore have the same replace-plan semantics.
 - `--cleanup-plan-before-apply` is destructive by design: it deletes all matching owned events before recreating the current set. If apply-plan then fails, individual-sync fallback is disabled to avoid partial recreation. Changing a workout `id` creates a new remote identity, so the old event may require an explicit cleanup.
+- Real `cleanup` and `sync --cleanup-plan-before-apply` require `--yes`; use `--dry-run` to inspect candidates without confirmation or deletion.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.

@@ -8,7 +8,15 @@ var jsonErrorOutput = args.Contains("--json", StringComparer.OrdinalIgnoreCase);
 
 if (args.Length < 2)
 {
-    PrintUsage();
+    if (jsonErrorOutput)
+    {
+        Console.WriteLine("{\"success\":false,\"error\":\"Usage requires a command and plan path.\"}");
+    }
+    else
+    {
+        PrintUsage();
+    }
+
     return 1;
 }
 
@@ -35,7 +43,7 @@ try
         case "sync":
             var syncPlan = PlanLoader.Load(planPath);
             var syncOptions = ParseSyncOptions(args, syncPlan.Meta.StartTimeLocal);
-            jsonErrorOutput = syncOptions.JsonOutput;
+            EnsureDestructiveOperationConfirmed(syncOptions, "sync --cleanup-plan-before-apply");
             var mappedEvents = PlanToIntervalsMapper.Map(syncPlan, syncOptions.StartTimeLocal);
 
             if (!syncOptions.JsonOutput)
@@ -66,7 +74,6 @@ try
         case "verify":
             var verifyPlan = PlanLoader.Load(planPath);
             var verifyOptions = ParseSyncOptions(args, verifyPlan.Meta.StartTimeLocal);
-            jsonErrorOutput = verifyOptions.JsonOutput;
             var verifyEvents = PlanToIntervalsMapper.Map(verifyPlan, verifyOptions.StartTimeLocal);
 
             if (!verifyOptions.JsonOutput)
@@ -100,7 +107,7 @@ try
         case "cleanup":
             var cleanupPlan = PlanLoader.Load(planPath);
             var cleanupOptions = ParseSyncOptions(args, cleanupPlan.Meta.StartTimeLocal);
-            jsonErrorOutput = cleanupOptions.JsonOutput;
+            EnsureDestructiveOperationConfirmed(cleanupOptions, "cleanup");
             var cleanupEvents = PlanToIntervalsMapper.Map(cleanupPlan, cleanupOptions.StartTimeLocal);
 
             using (var client = CreateHttpClient())
@@ -192,14 +199,23 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
     var cleanupPlanBeforeApply = options.ContainsKey("cleanup-plan-before-apply");
     var startTimeLocal = GetOption(options, "start-time-local") ?? planStartTimeLocal ?? "00:00";
     var planName = GetOption(options, "plan-name") ?? "Running Plan Auto";
+    var cleanupRangeDaysRaw = GetOption(options, "cleanup-range-days");
+    var cleanupRangeDays = 7;
     var noVerify = options.ContainsKey("no-verify");
     var jsonOutput = options.ContainsKey("json");
+    var confirmDestructiveCleanup = options.ContainsKey("yes");
     var folderIdRaw = GetOption(options, "folder-id");
     var folderId = 0;
 
     if (!string.IsNullOrWhiteSpace(folderIdRaw) && (!int.TryParse(folderIdRaw, out folderId) || folderId < 0))
     {
         throw new ArgumentException("--folder-id must be an integer.");
+    }
+
+    if (!string.IsNullOrWhiteSpace(cleanupRangeDaysRaw)
+        && (!int.TryParse(cleanupRangeDaysRaw, out cleanupRangeDays) || cleanupRangeDays < 0))
+    {
+        throw new ArgumentException("--cleanup-range-days must be a non-negative integer.");
     }
 
     if (string.IsNullOrWhiteSpace(athleteId))
@@ -229,6 +245,8 @@ static IntervalsOptions ParseSyncOptions(IReadOnlyList<string> args, string? pla
         CreatePlanOnMissing = createPlanOnMissing,
         PlanName = planName,
         CleanupPlanBeforeApply = cleanupPlanBeforeApply,
+        CleanupRangeDays = cleanupRangeDays,
+        ConfirmDestructiveCleanup = confirmDestructiveCleanup,
         VerifyAfterSync = !noVerify,
         JsonOutput = jsonOutput
     };
@@ -238,11 +256,11 @@ static Dictionary<string, string?> ParseOptions(IReadOnlyList<string> args)
 {
     var valueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "athlete-id", "api-key", "base-url", "folder-id", "start-time-local", "plan-name"
+        "athlete-id", "api-key", "base-url", "folder-id", "start-time-local", "plan-name", "cleanup-range-days"
     };
     var flagOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "dry-run", "apply-plan", "create-plan-on-missing", "cleanup-plan-before-apply", "no-verify", "json"
+        "dry-run", "apply-plan", "create-plan-on-missing", "cleanup-plan-before-apply", "no-verify", "json", "yes"
     };
     var options = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 
@@ -287,6 +305,15 @@ static void EnsureNoOptions(IReadOnlyList<string> args)
     }
 }
 
+static void EnsureDestructiveOperationConfirmed(IntervalsOptions options, string operation)
+{
+    var destructive = options.CleanupPlanBeforeApply || operation.Equals("cleanup", StringComparison.OrdinalIgnoreCase);
+    if (destructive && !options.DryRun && !options.ConfirmDestructiveCleanup)
+    {
+        throw new ArgumentException($"{operation} is destructive. Re-run with --yes or use --dry-run first.");
+    }
+}
+
 static string? GetOption(IReadOnlyDictionary<string, string?> options, string key)
     => options.TryGetValue(key, out var value) ? value : null;
 
@@ -294,9 +321,9 @@ static void PrintUsage()
 {
     Console.WriteLine("Usage:");
     Console.WriteLine("  running-plan validate <plan.yaml>");
-    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--apply-plan] [--folder-id 0] [--start-time-local 00:00] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply] [--no-verify] [--json]");
+    Console.WriteLine("  running-plan sync <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--dry-run] [--apply-plan] [--folder-id 0] [--start-time-local 00:00] [--create-plan-on-missing] [--plan-name \"Running Plan Auto\"] [--cleanup-plan-before-apply --yes] [--cleanup-range-days 7] [--no-verify] [--json]");
     Console.WriteLine("  running-plan verify <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--json]");
-    Console.WriteLine("  running-plan cleanup <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--start-time-local 00:00] [--plan-name \"Running Plan Auto\"] [--dry-run] [--json]");
+    Console.WriteLine("  running-plan cleanup <plan.yaml> --athlete-id <id> --api-key <key> [--base-url https://intervals.icu] [--start-time-local 00:00] [--plan-name \"Running Plan Auto\"] [--cleanup-range-days 7] [--dry-run | --yes] [--json]");
     Console.WriteLine();
     Console.WriteLine("Environment variable fallback:");
     Console.WriteLine("  INTERVALS_ATHLETE_ID");

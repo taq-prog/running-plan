@@ -6,8 +6,6 @@ namespace RunningPlan.Cli.Intervals;
 
 public sealed class IntervalsClient
 {
-    private const int CleanupRangePaddingDays = 7;
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true
@@ -133,8 +131,8 @@ public sealed class IntervalsClient
 
         var oldestDate = events.MinBy(x => x.Date)!.Date;
         var newestDate = events.MaxBy(x => x.Date)!.Date;
-        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
-        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
+        var cleanupOldestDate = oldestDate.AddDays(-_options.CleanupRangeDays);
+        var cleanupNewestDate = newestDate.AddDays(_options.CleanupRangeDays);
         var candidateEvents = await GetExistingEventsForPlannedSignaturesAsync(events, cleanupOldestDate, cleanupNewestDate, cancellationToken);
         var candidateIds = candidateEvents.Select(x => x.Id).Distinct().ToList();
         var duplicateSignaturesBefore = candidateEvents
@@ -688,8 +686,8 @@ public sealed class IntervalsClient
 
         var oldestDate = plannedEvents.MinBy(x => x.Date)!.Date;
         var newestDate = plannedEvents.MaxBy(x => x.Date)!.Date;
-        var cleanupOldestDate = oldestDate.AddDays(-CleanupRangePaddingDays);
-        var cleanupNewestDate = newestDate.AddDays(CleanupRangePaddingDays);
+        var cleanupOldestDate = oldestDate.AddDays(-_options.CleanupRangeDays);
+        var cleanupNewestDate = newestDate.AddDays(_options.CleanupRangeDays);
         var candidateEvents = await GetExistingEventsForPlannedSignaturesAsync(plannedEvents, cleanupOldestDate, cleanupNewestDate, cancellationToken);
 
         var duplicateSignaturesBefore = candidateEvents
