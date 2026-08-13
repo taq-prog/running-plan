@@ -252,7 +252,7 @@ public sealed class IntervalsClient
         var minDate = events.MinBy(x => x.Date)!.Date;
         var maxDate = events.MaxBy(x => x.Date)!.Date;
 
-        var eventsInRange = await FetchEventsInRangeAsync(minDate, maxDate, cancellationToken);
+        var eventsInRange = await FetchEventsInRangeAsync(minDate.AddDays(-1), maxDate.AddDays(1), cancellationToken);
 
         var expectedDateByExternalId = events.ToDictionary(x => x.ExternalId, x => x.Date, StringComparer.OrdinalIgnoreCase);
         var externalIdByUid = events.ToDictionary(x => x.Uid, x => x.ExternalId, StringComparer.OrdinalIgnoreCase);

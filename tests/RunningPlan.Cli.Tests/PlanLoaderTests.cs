@@ -198,6 +198,48 @@ weeks:
   }
 
   [Fact]
+  public void Load_RejectsInvalidTimezone()
+  {
+    var yaml = File.ReadAllText(TestPaths.PlanPath).Replace("Asia/Almaty", "Mars/Almaty", StringComparison.Ordinal);
+
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("valid IANA timezone ID", error.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void Load_RejectsExplicitNullWeeks()
+  {
+    var yaml = """
+meta:
+  name: "Null weeks"
+  start_date: 2026-08-11
+  timezone: "Asia/Almaty"
+  default_targets:
+    easy_hr: { min: 125, max: 145 }
+    steady_hr: { min: 145, max: 160 }
+    tempo_hr: { min: 165, max: 175 }
+  hr_profile:
+    threshold: 181
+    max: 199
+    hrrc_min: 181
+    zones:
+      z1: { min: 0, max: 152 }
+      z2: { min: 153, max: 161 }
+      z3: { min: 162, max: 170 }
+      z4: { min: 171, max: 180 }
+      z5: { min: 181, max: 185 }
+      z6: { min: 186, max: 190 }
+      z7: { min: 191, max: 199 }
+weeks: null
+""";
+
+    var error = Assert.Throws<ValidationException>(() => PlanLoader.Load(WriteTempYaml(yaml)));
+
+    Assert.Contains("weeks is required and cannot be null", error.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Load_RejectsStructuredDistanceThatExceedsDeclaredDistance()
   {
     var yaml = """

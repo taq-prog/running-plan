@@ -25,7 +25,7 @@ public static class PlanToIntervalsMapper
                     Description = description,
                     Type = workout.Type,
                     Category = workout.Category,
-                    DistanceMeters = workout.DistanceKm.HasValue ? workout.DistanceKm.Value * 1000 : null,
+                    DistanceMeters = workout.DistanceKm.HasValue ? decimal.ToInt32(workout.DistanceKm.Value * 1000) : null,
                     MovingTimeSeconds = ToMovingTimeSeconds(workout.DurationMin, workout.DurationSec),
                     Tags = workout.Tags
                 });

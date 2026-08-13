@@ -56,10 +56,27 @@ public static class PlanLoader
             ValidateMeta(plan.Meta, results);
         }
 
-        var weekNumbers = new HashSet<int>();
-        foreach (var week in plan.Weeks)
+        if (plan.Weeks is null)
         {
+            results.Add(new ValidationResult("weeks is required and cannot be null."));
+        }
+
+        var weekNumbers = new HashSet<int>();
+        foreach (var week in plan.Weeks ?? [])
+        {
+            if (week is null)
+            {
+                results.Add(new ValidationResult("weeks cannot contain null items."));
+                continue;
+            }
+
             Validator.TryValidateObject(week, new ValidationContext(week), results, true);
+            if (week.Workouts is null)
+            {
+                results.Add(new ValidationResult($"Week {week.Number} workouts is required and cannot be null."));
+                continue;
+            }
+
             if (!weekNumbers.Add(week.Number))
             {
                 results.Add(new ValidationResult($"Duplicate week number: {week.Number}"));
@@ -68,6 +85,23 @@ public static class PlanLoader
             var workoutIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var workout in week.Workouts)
             {
+                if (workout is null)
+                {
+                    results.Add(new ValidationResult($"Week {week.Number} workouts cannot contain null items."));
+                    continue;
+                }
+
+                if (workout.Steps is null)
+                {
+                    results.Add(new ValidationResult($"Workout {workout.Id} steps is required and cannot be null."));
+                    continue;
+                }
+
+                if (workout.Tags is null)
+                {
+                    results.Add(new ValidationResult($"Workout {workout.Id} tags cannot be null."));
+                }
+
                 Validator.TryValidateObject(workout, new ValidationContext(workout), results, true);
 
                 if (!workoutIds.Add(workout.Id))
@@ -78,6 +112,11 @@ public static class PlanLoader
                 if (workout.DistanceKm is null && workout.DurationMin is null && workout.DurationSec is null && workout.Steps.Count == 0)
                 {
                     results.Add(new ValidationResult($"Workout {workout.Id} must define distance_km, duration_min, duration_sec, or steps."));
+                }
+
+                if (workout.DurationSec == 0 && workout.DurationMin is null)
+                {
+                    results.Add(new ValidationResult($"Workout {workout.Id}: duration_sec=0 is only valid together with duration_min."));
                 }
 
                 ValidateHrRange($"Week {week.Number} workout {workout.Id}: workout HR", workout.TargetHr, results);
@@ -122,10 +161,10 @@ public static class PlanLoader
         }
     }
 
-    private static int SumDistanceKm(IReadOnlyCollection<WorkoutStep> steps, out bool hasTimeBasedStep)
+    private static decimal SumDistanceKm(IReadOnlyCollection<WorkoutStep> steps, out bool hasTimeBasedStep)
     {
         hasTimeBasedStep = false;
-        var totalDistanceKm = 0;
+        decimal totalDistanceKm = 0;
         foreach (var step in steps)
         {
             if (step.DistanceKm.HasValue)
@@ -152,7 +191,19 @@ public static class PlanLoader
     {
         foreach (var step in steps)
         {
+            if (step is null)
+            {
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: steps cannot contain null items."));
+                continue;
+            }
+
             Validator.TryValidateObject(step, new ValidationContext(step), results, true);
+
+            if (step.Steps is null)
+            {
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' steps cannot be null."));
+                continue;
+            }
 
             if (step.Kind == WorkoutStepKind.Unknown)
             {
@@ -164,6 +215,11 @@ public static class PlanLoader
             if (!hasMetric)
             {
                 results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' must define distance_km, duration_min, duration_sec, or be repeat."));
+            }
+
+            if (step.DurationSec == 0 && step.DurationMin is null)
+            {
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: duration_sec=0 is only valid together with duration_min."));
             }
 
             if (step.Kind == WorkoutStepKind.Repeat)
@@ -195,6 +251,22 @@ public static class PlanLoader
 
     private static void ValidateMeta(PlanMeta meta, List<ValidationResult> results)
     {
+        if (!string.IsNullOrWhiteSpace(meta.TimeZone))
+        {
+            try
+            {
+                _ = TimeZoneInfo.FindSystemTimeZoneById(meta.TimeZone);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                results.Add(new ValidationResult($"meta.timezone must be a valid IANA timezone ID: {meta.TimeZone}."));
+            }
+            catch (InvalidTimeZoneException)
+            {
+                results.Add(new ValidationResult($"meta.timezone is invalid: {meta.TimeZone}."));
+            }
+        }
+
         if (meta.DefaultTargets is null)
         {
             results.Add(new ValidationResult("meta.default_targets is required."));

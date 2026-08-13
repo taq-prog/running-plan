@@ -102,14 +102,14 @@ $defs:
       category:
         type: string
       distance_km:
-        type: integer
-        minimum: 1
+        type: number
+        minimum: 0.001
       duration_min:
         type: integer
         minimum: 1
       duration_sec:
         type: integer
-        minimum: 1
+        minimum: 0
       target_hr:
         $ref: "#/$defs/hrRange"
       tags:
@@ -135,14 +135,14 @@ $defs:
         type: string
         enum: [easy, warmup, stride, tempo, steady, moderate, marathon, recovery, cooldown, repeat]
       distance_km:
-        type: integer
-        minimum: 1
+        type: number
+        minimum: 0.001
       duration_min:
         type: integer
         minimum: 1
       duration_sec:
         type: integer
-        minimum: 1
+        minimum: 0
       repeats:
         type: integer
         minimum: 1

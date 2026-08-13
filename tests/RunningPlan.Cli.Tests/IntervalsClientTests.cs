@@ -103,6 +103,102 @@ public sealed class IntervalsClientTests
     }
 
     [Fact]
+    public async Task ApplyPlanUnavailable_FallsBackToIndividualSyncAndReportsFallback()
+    {
+        var handler = new StubHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/events/apply-plan", StringComparison.Ordinal))
+            {
+                return JsonResponse("Plan not found", HttpStatusCode.NotFound);
+            }
+
+            if (request.RequestUri.AbsolutePath.EndsWith("/events", StringComparison.Ordinal))
+            {
+                return JsonResponse("{}");
+            }
+
+            throw new InvalidOperationException($"Unexpected request: {request.Method} {request.RequestUri}");
+        });
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            UseApplyPlan = true,
+            VerifyAfterSync = false
+        });
+
+        var report = await client.UpsertEventsAsync([CreateEvent()], CancellationToken.None);
+
+        Assert.True(report.ApplyPlanRequested);
+        Assert.False(report.ApplyPlan);
+        Assert.True(report.ApplyPlanFallback);
+        Assert.Equal(1, report.SyncedCount);
+    }
+
+    [Fact]
+    public async Task UpsertEventsAsync_DoesNotRetryBadRequest()
+    {
+        var handler = new StubHandler(_ => JsonResponse("bad request", HttpStatusCode.BadRequest));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            VerifyAfterSync = false
+        });
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.UpsertEventsAsync([CreateEvent()], CancellationToken.None));
+
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData(408)]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(502)]
+    [InlineData(503)]
+    [InlineData(504)]
+    public async Task UpsertEventsAsync_RetriesTransientStatusCodes(int statusCode)
+    {
+        var calls = 0;
+        var handler = new StubHandler(_ =>
+            calls++ == 0
+                ? JsonResponse("temporary", (HttpStatusCode)statusCode)
+                : JsonResponse("{}"));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            VerifyAfterSync = false
+        });
+
+        var report = await client.UpsertEventsAsync([CreateEvent()], CancellationToken.None);
+
+        Assert.Equal(1, report.SyncedCount);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task UpsertEventsAsync_DoesNotRetryUnauthorized()
+    {
+        var handler = new StubHandler(_ => JsonResponse("unauthorized", HttpStatusCode.Unauthorized));
+        var client = CreateClient(handler, new IntervalsOptions
+        {
+            AthleteId = "athlete",
+            ApiKey = "secret",
+            BaseUrl = "https://intervals.test",
+            VerifyAfterSync = false
+        });
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.UpsertEventsAsync([CreateEvent()], CancellationToken.None));
+
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
     public async Task VerifyEventsAsync_MatchesExternalIdAndReportsDateMismatch()
     {
         var handler = new StubHandler(_ => JsonResponse("[{\"external_id\":\"external-1\",\"uid\":\"uid-1\",\"start_date_local\":\"2026-08-12T04:30:00\"}]"));

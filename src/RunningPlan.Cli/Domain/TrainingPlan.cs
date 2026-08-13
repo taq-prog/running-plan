@@ -98,14 +98,14 @@ public sealed class PlannedWorkout
     [Required]
     public string Category { get; init; } = string.Empty;
 
-    [Range(1, int.MaxValue)]
-    public int? DistanceKm { get; init; }
+    [Range(0.001, 1000)]
+    public decimal? DistanceKm { get; init; }
 
     [Range(1, int.MaxValue)]
     public int? DurationMin { get; init; }
 
     [YamlMember(Alias = "duration_sec")]
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int? DurationSec { get; init; }
 
     public HeartRateRange? TargetHr { get; init; }
@@ -119,14 +119,14 @@ public sealed class WorkoutStep
 {
     public WorkoutStepKind Kind { get; init; } = WorkoutStepKind.Unknown;
 
-    [Range(1, int.MaxValue)]
-    public int? DistanceKm { get; init; }
+    [Range(0.001, 1000)]
+    public decimal? DistanceKm { get; init; }
 
     [Range(1, int.MaxValue)]
     public int? DurationMin { get; init; }
 
     [YamlMember(Alias = "duration_sec")]
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int? DurationSec { get; init; }
 
     [Range(1, int.MaxValue)]

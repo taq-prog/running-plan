@@ -34,10 +34,10 @@ public static class WorkoutDescriptionBuilder
         }
     }
 
-    private static void AppendStep(StringBuilder builder, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, WorkoutStepKind? kind)
+    private static void AppendStep(StringBuilder builder, decimal? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, WorkoutStepKind? kind)
     {
         var measurement = distanceKm.HasValue
-            ? $"{distanceKm.Value}km"
+            ? $"{distanceKm.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}km"
             : durationSec.HasValue
                 ? $"{durationSec.Value}s"
                 : $"{durationMin ?? 0}m";

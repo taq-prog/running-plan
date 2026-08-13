@@ -96,6 +96,7 @@ meta:
 
 - `meta.start_time_local` is used by default for `sync` and `cleanup`.
 - `--start-time-local HH:mm` overrides YAML for a specific run.
+- `start_time_local` is interpreted in the IANA timezone from `meta.timezone`; the resulting local timestamp is sent to Intervals without UTC conversion.
 
 ## Sync (preview only)
 
@@ -206,19 +207,22 @@ dotnet run --project src/RunningPlan.Cli -- sync plans/plan-12-weeks.yaml \
 - Verification and cleanup request up to 1000 events and fail explicitly if the API returns the full page, preventing silent pagination truncation.
 - Verification mode depends on sync mode:
   - per-event sync: checks `external_id` (+ date consistency)
-  - apply-plan sync: checks by `date + name` (and `plan_name` when provided), because some accounts return `external_id = null` for apply-plan-created events
+  - apply-plan sync: checks `external_id`/`uid` when available, then unique date/name/description identity, because some accounts return stable IDs differently for apply-plan-created events
 - If verification finds missing or mismatched workouts, sync exits with an error and prints a compact mismatch report.
 - Events are created as `category=WORKOUT` and `type=Run`.
 - Every workout is sent through `description` using Intervals Workout Builder syntax, including distance/time, repeat blocks, cues, and HR targets.
 - `distance_km` is the total workout distance; `steps` describe how to execute the workout and may include time-based segments.
+- `distance_km` supports fractional kilometers such as `0.2`, `0.4`, and `1.5`; values are converted to meters for the API.
 - Workouts with time-based steps must include a final distance step when needed to reach their declared distance; the plan loader validates this invariant.
 - Warmup, active, recovery, and cooldown steps include matching `intensity` annotations where configured.
 - YAML is strict: unknown keys are treated as errors so typos (for example `target_hrr`) fail fast.
 - HR ranges are validated in runtime across workout targets, default targets, and zone profile with `min <= max`.
 - HR zones must be strictly ordered, `hrrc_min <= threshold <= max`, and required meta ranges cannot be omitted.
 - `moving_time` is sent only when explicitly declared on the workout (`duration_min` and/or `duration_sec`); step durations are descriptive and are not estimated into total workout time.
+- `duration_sec` is additional seconds. `duration_min: 5` plus `duration_sec: 30` means 330 seconds; `duration_sec: 0` is allowed only with `duration_min`.
 - `start_time_local` is mapped into each event as `start_date_local`; `timezone` remains the plan's local-time metadata because Intervals receives the explicitly local timestamp and no UTC conversion is performed.
 - Apply-plan verification matches `uid` or `external_id` when available, otherwise uses a unique date/name/description identity. Duplicate planned events are never satisfied by one API event.
 - Cleanup only deletes events owned by the configured plan identity (`plan_name`, stable ids, or the `running-plan` tag), and removes duplicates while preserving the newest canonical event.
+- `--cleanup-plan-before-apply` is destructive by design: it deletes all matching events owned by this plan in the padded date/name range before recreating the current set. Changing a workout `id` creates a new remote identity, so the old event may require an explicit cleanup.
 - Intervals.icu parses the description into its native structured workout representation; the CLI does not send a custom `workout_doc`.
 - In Intervals settings, enable Garmin sync (`Upload planned workouts`) so upcoming workouts are sent to Garmin Connect.
