@@ -25,7 +25,7 @@ public static class PlanToIntervalsMapper
                     Type = workout.Type,
                     Category = workout.Category,
                     DistanceMeters = workout.DistanceKm.HasValue ? workout.DistanceKm.Value * 1000 : null,
-                    MovingTimeSeconds = workout.DurationMin.HasValue ? workout.DurationMin.Value * 60 : null,
+                    MovingTimeSeconds = ToMovingTimeSeconds(workout.DurationMin, workout.DurationSec),
                     Tags = workout.Tags
                 });
             }
@@ -70,7 +70,7 @@ public static class PlanToIntervalsMapper
     {
         foreach (var step in steps)
         {
-            if (step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase))
+            if (step.Kind == WorkoutStepKind.Repeat)
             {
                 sb.AppendLine($"{step.Repeats}x");
                 AppendBuilderSteps(sb, step.Steps);
@@ -82,7 +82,7 @@ public static class PlanToIntervalsMapper
         }
     }
 
-    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, string? kind)
+    private static void AppendBuilderStep(StringBuilder sb, int? distanceKm, int? durationMin, int? durationSec, HeartRateRange? target, string? note, WorkoutStepKind? kind)
     {
         var measurement = distanceKm.HasValue
             ? $"{distanceKm.Value}km"
@@ -91,14 +91,24 @@ public static class PlanToIntervalsMapper
                 : $"{durationMin ?? 0}m";
         var targetText = target is null ? string.Empty : $" {target.Min}-{target.Max} HR";
         var cue = string.IsNullOrWhiteSpace(note) ? string.Empty : $"{note.Trim()} ";
-        var intensity = kind?.ToLowerInvariant() switch
+        var intensity = kind switch
         {
-            "warmup" => " intensity=warmup",
-            "stride" or "tempo" or "steady" or "moderate" or "marathon" => " intensity=active",
-            "recovery" => " intensity=recovery",
-            "cooldown" => " intensity=cooldown",
+            WorkoutStepKind.Warmup => " intensity=warmup",
+            WorkoutStepKind.Stride or WorkoutStepKind.Tempo or WorkoutStepKind.Steady or WorkoutStepKind.Moderate or WorkoutStepKind.Marathon => " intensity=active",
+            WorkoutStepKind.Recovery => " intensity=recovery",
+            WorkoutStepKind.Cooldown => " intensity=cooldown",
             _ => string.Empty
         };
         sb.AppendLine($"- {cue}{measurement}{targetText}{intensity}");
+    }
+
+    private static int? ToMovingTimeSeconds(int? durationMin, int? durationSec)
+    {
+        if (!durationMin.HasValue && !durationSec.HasValue)
+        {
+            return null;
+        }
+
+        return (durationMin ?? 0) * 60 + (durationSec ?? 0);
     }
 }

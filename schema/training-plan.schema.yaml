@@ -5,10 +5,12 @@ type: object
 required:
   - meta
   - weeks
+additionalProperties: false
 properties:
   meta:
     type: object
     required: [name, start_date, timezone]
+    additionalProperties: false
     properties:
       name:
         type: string
@@ -24,6 +26,7 @@ properties:
         pattern: "^([01]\\d|2[0-3]):[0-5]\\d$"
       default_targets:
         type: object
+        additionalProperties: false
         properties:
           easy_hr: { $ref: "#/$defs/hrRange" }
           steady_hr: { $ref: "#/$defs/hrRange" }
@@ -31,6 +34,7 @@ properties:
       hr_profile:
         type: object
         required: [threshold, max, hrrc_min, zones]
+        additionalProperties: false
         properties:
           threshold: { type: integer, minimum: 50, maximum: 230 }
           max: { type: integer, minimum: 50, maximum: 230 }
@@ -38,6 +42,7 @@ properties:
           zones:
             type: object
             required: [z1, z2, z3, z4, z5, z6, z7]
+            additionalProperties: false
             properties:
               z1: { $ref: "#/$defs/hrRange" }
               z2: { $ref: "#/$defs/hrRange" }
@@ -52,6 +57,7 @@ properties:
     items:
       type: object
       required: [number, workouts]
+      additionalProperties: false
       properties:
         number:
           type: integer
@@ -66,6 +72,7 @@ $defs:
   hrRange:
     type: object
     required: [min, max]
+    additionalProperties: false
     properties:
       min:
         type: integer
@@ -78,6 +85,7 @@ $defs:
   workout:
     type: object
     required: [id, name, day, type, category]
+    additionalProperties: false
     properties:
       id:
         type: string
@@ -109,14 +117,22 @@ $defs:
           type: string
       steps:
         type: array
+        minItems: 1
         items:
           $ref: "#/$defs/step"
+    anyOf:
+      - required: [distance_km]
+      - required: [duration_min]
+      - required: [duration_sec]
+      - required: [steps]
   step:
     type: object
     required: [kind]
+    additionalProperties: false
     properties:
       kind:
         type: string
+        enum: [easy, warmup, stride, tempo, steady, moderate, marathon, recovery, cooldown, repeat]
       distance_km:
         type: integer
         minimum: 1
@@ -135,5 +151,23 @@ $defs:
         type: string
       steps:
         type: array
+        minItems: 1
         items:
           $ref: "#/$defs/step"
+    allOf:
+      - if:
+          properties:
+            kind:
+              const: repeat
+        then:
+          required: [repeats, steps]
+      - if:
+          properties:
+            kind:
+              not:
+                const: repeat
+        then:
+          anyOf:
+            - required: [distance_km]
+            - required: [duration_min]
+            - required: [duration_sec]

@@ -93,11 +93,14 @@ public sealed class PlannedWorkout
     [Required]
     public string Category { get; init; } = "WORKOUT";
 
+    [Range(1, int.MaxValue)]
     public int? DistanceKm { get; init; }
 
+    [Range(1, int.MaxValue)]
     public int? DurationMin { get; init; }
 
     [YamlMember(Alias = "duration_sec")]
+    [Range(1, int.MaxValue)]
     public int? DurationSec { get; init; }
 
     public HeartRateRange? TargetHr { get; init; }
@@ -109,16 +112,19 @@ public sealed class PlannedWorkout
 
 public sealed class WorkoutStep
 {
-    [Required]
-    public string Kind { get; init; } = string.Empty;
+    public WorkoutStepKind Kind { get; init; } = WorkoutStepKind.Unknown;
 
+    [Range(1, int.MaxValue)]
     public int? DistanceKm { get; init; }
 
+    [Range(1, int.MaxValue)]
     public int? DurationMin { get; init; }
 
     [YamlMember(Alias = "duration_sec")]
+    [Range(1, int.MaxValue)]
     public int? DurationSec { get; init; }
 
+    [Range(1, int.MaxValue)]
     public int? Repeats { get; init; }
 
     public HeartRateRange? TargetHr { get; init; }
@@ -135,4 +141,19 @@ public sealed class HeartRateRange
 
     [Range(50, 230)]
     public int Max { get; init; }
+}
+
+public enum WorkoutStepKind
+{
+    Unknown = 0,
+    Easy,
+    Warmup,
+    Stride,
+    Tempo,
+    Steady,
+    Moderate,
+    Marathon,
+    Recovery,
+    Cooldown,
+    Repeat
 }

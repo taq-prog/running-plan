@@ -18,7 +18,6 @@ public static class PlanLoader
 
         var deserializer = new DeserializerBuilder()
             .WithNamingConvention(UnderscoredNamingConvention.Instance)
-            .IgnoreUnmatchedProperties()
             .Build();
 
         var plan = deserializer.Deserialize<TrainingPlan>(yaml)
@@ -35,6 +34,7 @@ public static class PlanLoader
         var context = new ValidationContext(plan);
         Validator.TryValidateObject(plan, context, results, validateAllProperties: true);
         Validator.TryValidateObject(plan.Meta, new ValidationContext(plan.Meta), results, validateAllProperties: true);
+        ValidateMetaHeartRateRanges(plan.Meta, results);
 
         var weekNumbers = new HashSet<int>();
         foreach (var week in plan.Weeks)
@@ -59,6 +59,8 @@ public static class PlanLoader
                 {
                     results.Add(new ValidationResult($"Workout {workout.Id} must define distance_km, duration_min, duration_sec, or steps."));
                 }
+
+                ValidateHrRange($"Week {week.Number} workout {workout.Id}: workout HR", workout.TargetHr, results);
 
                 ValidateWorkoutDistance(week.Number, workout, results);
 
@@ -131,13 +133,19 @@ public static class PlanLoader
         {
             Validator.TryValidateObject(step, new ValidationContext(step), results, true);
 
-            var hasMetric = step.DistanceKm.HasValue || step.DurationMin.HasValue || step.DurationSec.HasValue || step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase);
+            if (step.Kind == WorkoutStepKind.Unknown)
+            {
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step kind is required."));
+                continue;
+            }
+
+            var hasMetric = step.DistanceKm.HasValue || step.DurationMin.HasValue || step.DurationSec.HasValue || step.Kind == WorkoutStepKind.Repeat;
             if (!hasMetric)
             {
                 results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step '{step.Kind}' must define distance_km, duration_min, duration_sec, or be repeat."));
             }
 
-            if (step.Kind.Equals("repeat", StringComparison.OrdinalIgnoreCase))
+            if (step.Kind == WorkoutStepKind.Repeat)
             {
                 if (!step.Repeats.HasValue || step.Repeats.Value < 1)
                 {
@@ -149,16 +157,45 @@ public static class PlanLoader
                     results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: repeat step must include nested steps."));
                 }
             }
-
-            if (step.TargetHr is not null && step.TargetHr.Min > step.TargetHr.Max)
+            else if (step.Repeats.HasValue)
             {
-                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: step HR min cannot be above max."));
+                results.Add(new ValidationResult($"Week {weekNumber} workout {workoutId}: repeats is only allowed for repeat steps."));
             }
+
+            ValidateHrRange($"Week {weekNumber} workout {workoutId}: step HR", step.TargetHr, results);
 
             if (step.Steps.Count > 0)
             {
                 ValidateStepTree(weekNumber, workoutId, step.Steps, results);
             }
+        }
+    }
+
+    private static void ValidateMetaHeartRateRanges(PlanMeta meta, List<ValidationResult> results)
+    {
+        ValidateHrRange("Meta default_targets.easy_hr", meta.DefaultTargets.EasyHr, results);
+        ValidateHrRange("Meta default_targets.steady_hr", meta.DefaultTargets.SteadyHr, results);
+        ValidateHrRange("Meta default_targets.tempo_hr", meta.DefaultTargets.TempoHr, results);
+
+        ValidateHrRange("Meta hr_profile.zones.z1", meta.HrProfile.Zones.Z1, results);
+        ValidateHrRange("Meta hr_profile.zones.z2", meta.HrProfile.Zones.Z2, results);
+        ValidateHrRange("Meta hr_profile.zones.z3", meta.HrProfile.Zones.Z3, results);
+        ValidateHrRange("Meta hr_profile.zones.z4", meta.HrProfile.Zones.Z4, results);
+        ValidateHrRange("Meta hr_profile.zones.z5", meta.HrProfile.Zones.Z5, results);
+        ValidateHrRange("Meta hr_profile.zones.z6", meta.HrProfile.Zones.Z6, results);
+        ValidateHrRange("Meta hr_profile.zones.z7", meta.HrProfile.Zones.Z7, results);
+    }
+
+    private static void ValidateHrRange(string scope, HeartRateRange? range, List<ValidationResult> results)
+    {
+        if (range is null)
+        {
+            return;
+        }
+
+        if (range.Min > range.Max)
+        {
+            results.Add(new ValidationResult($"{scope}: min cannot be above max."));
         }
     }
 }
